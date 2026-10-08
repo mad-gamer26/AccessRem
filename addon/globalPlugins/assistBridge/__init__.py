@@ -74,6 +74,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
 	"rate": None,
 	"volume": None,
 	"muteOnLocalControl": False,
+	# Follower: pace of the silent relay synthesizer, matching the controlling computer's voice.
+	"estimatedRate": 50,
 	# Gestures that switch keyboard control between this computer and the remote one.
 	"toggleGestures": ["kb:NVDA+alt+tab", "kb:control+alt+shift+f11"],
 	"sasGestures": [],
@@ -338,6 +340,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if not portText:
 			log.info("AssistBridge backend loaded without a link port; staying idle.")
 			return
+		_prepareBundledConfig()
 		self.localMachine = BridgeLocalMachine(self)
 		self._patchCues()
 		inputCore.decide_handleRawKey.register(self._processKeyInput)
@@ -463,7 +466,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				if not synthDriverHandler.setSynth(desired):
 					synthDriverHandler.setSynth("auto")
 			synth = synthDriverHandler.getSynth()
-			if synth is not None and synth.name != SILENT_SYNTH:
+			if synth is not None and synth.name == SILENT_SYNTH:
+				synth.rate = int(self.cfg.get("estimatedRate") or 50)
+			elif synth is not None:
 				if self.cfg.get("rate") is not None and synth.isSupported("rate"):
 					synth.rate = int(self.cfg["rate"])
 				if self.cfg.get("volume") is not None and synth.isSupported("volume"):
@@ -847,6 +852,30 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	@scriptHandler.script(description="Mutes or unmutes speech and sounds from the remote computer")
 	def script_toggleMute(self, gesture):
 		self.toggleMute()
+
+
+def _prepareBundledConfig() -> None:
+	"""Keep the bundled NVDA quiet and unobtrusive for the person at this computer.
+
+	Runs before NVDA shows its startup dialogs, so they are never displayed.
+	"""
+	values = {
+		("general", "showWelcomeDialogAtStartup"): False,
+		("general", "askToExit"): False,
+		("general", "playStartAndExitSounds"): False,
+		("update", "askedAllowUsageStats"): True,
+		("update", "allowUsageStats"): False,
+		("update", "autoCheck"): False,
+		("update", "startupNotification"): False,
+		# NVDA's own Remote Access must stay off; this plugin runs the sessions instead.
+		("remote", "enabled"): False,
+		("audio", "audioDuckingMode"): 0,
+	}
+	for (section, key), value in values.items():
+		try:
+			config.conf[section][key] = value
+		except Exception:
+			log.debug(f"Unable to set {section}.{key}", exc_info=True)
 
 
 def _brailleName() -> str | None:

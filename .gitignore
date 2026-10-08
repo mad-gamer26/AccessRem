@@ -4,3 +4,4 @@ dist/
 .vs/
 *.user
 build/out/
+.claude/
