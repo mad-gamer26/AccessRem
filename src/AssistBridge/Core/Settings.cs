@@ -39,7 +39,7 @@ public sealed class Machine
     public DateTimeOffset? LastConnected { get; set; }
 
     [JsonIgnore]
-    public string DisplayName => string.IsNullOrWhiteSpace(Name) ? (Kind == ServerKind.HostLocally ? $"Hosted on this computer, port {Port}" : Protocol.HostPortToAddress(Host, Port)) : Name;
+    public string DisplayName => string.IsNullOrWhiteSpace(Name) ? (Kind == ServerKind.HostLocally ? "Direct connection" :Protocol.HostPortToAddress(Host, Port)) : Name;
 
     [JsonIgnore]
     public string Summary => Kind == ServerKind.HostLocally

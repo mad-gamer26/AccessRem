@@ -1,0 +1,18 @@
+AssistBridge third-party notices
+================================
+
+NVDA (NonVisual Desktop Access)
+  Copyright (C) 2006-2026 NV Access Limited and contributors.
+  Distributed under the GNU General Public License, version 2, with additional permissions
+  (see nvda\documentation\copying.txt in this package).
+  Source code: https://github.com/nvaccess/nvda
+  AssistBridge ships an unmodified copy of the NVDA release in the "nvda" folder, downloaded from
+  https://download.nvaccess.org/releases/. AssistBridge is not made or endorsed by NV Access.
+
+AssistBridge backend add-on (backend-addon folder)
+  Portions are adapted from NVDA's _remoteClient package
+  (Copyright (C) 2015-2026 NV Access Limited, Christopher Toth, Tyler Spivey, Babbage B.V.,
+  David Sexton and others), GPL version 2 or later.
+
+.NET runtime and libraries
+  Copyright (c) .NET Foundation and contributors. MIT License. https://github.com/dotnet/runtime

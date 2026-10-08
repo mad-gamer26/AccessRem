@@ -63,7 +63,60 @@ public partial class App : Application
                 Main.WindowState = WindowState.Minimized;
         }
         HandleArguments(_startupArgs, fromAnotherInstance: false);
+        if (Environment.GetEnvironmentVariable("ASSISTBRIDGE_SNAPSHOT") is { Length: > 0 } snapshotDir)
+        {
+            _ = SnapshotAsync(snapshotDir);
+            return;
+        }
         Dispatcher.BeginInvoke(AutoConnectAsync, DispatcherPriority.ApplicationIdle);
+    }
+
+    /// <summary>Developer aid: render each window to PNG (works even with the screen off or curtained), then exit.</summary>
+    private async Task SnapshotAsync(string directory)
+    {
+        Directory.CreateDirectory(directory);
+        await Task.Delay(1500);
+        SaveSnapshot(Main, Path.Combine(directory, "main.png"));
+        var windows = new (string Name, Func<Window> Create)[]
+        {
+            ("machine", () => new MachineDialog(new Machine(), true, Settings)),
+            ("quick", () => new QuickConnectDialog(Settings, ConnectionMode.Follower, null)),
+            ("settings", () => new SettingsWindow(Settings, Session)),
+            ("certificate", () => new CertificateDialog(new CertificateUntrustedException("relay.example.org", 6837, new string('a', 64), System.Net.Security.SslPolicyErrors.RemoteCertificateChainErrors))),
+        };
+        foreach (var (name, create) in windows)
+        {
+            var window = create();
+            window.Owner = Main;
+            window.Show();
+            await Task.Delay(700);
+            SaveSnapshot(window, Path.Combine(directory, name + ".png"));
+            window.Close();
+        }
+        _instance.Dispose();
+        _tray?.Dispose();
+        Shutdown();
+    }
+
+    private static void SaveSnapshot(Window window, string path)
+    {
+        window.UpdateLayout();
+        var content = (FrameworkElement)window.Content;
+        var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(window);
+        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
+            (int)(content.ActualWidth * dpi.DpiScaleX), (int)(content.ActualHeight * dpi.DpiScaleY),
+            dpi.PixelsPerInchX, dpi.PixelsPerInchY, System.Windows.Media.PixelFormats.Pbgra32);
+        var visual = new System.Windows.Media.DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            dc.DrawRectangle((System.Windows.Media.Brush)window.Background, null, new Rect(0, 0, content.ActualWidth, content.ActualHeight));
+            dc.DrawRectangle(new System.Windows.Media.VisualBrush(content), null, new Rect(0, 0, content.ActualWidth, content.ActualHeight));
+        }
+        bitmap.Render(visual);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+        using var file = File.Create(path);
+        encoder.Save(file);
     }
 
     private void SyncSystemRegistrations()

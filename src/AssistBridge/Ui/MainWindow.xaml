@@ -56,7 +56,7 @@
             </MenuItem>
         </Menu>
 
-        <StatusBar DockPanel.Dock="Bottom" Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="8,2">
+        <StatusBar DockPanel.Dock="Bottom" AutomationProperties.Name="Status" Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="8,2">
             <StatusBarItem>
                 <TextBlock x:Name="StatusBarText" Text="{Binding Status}" />
             </StatusBarItem>
@@ -89,9 +89,9 @@
             <!-- Saved computers -->
             <Border Style="{DynamicResource Card}" Grid.Column="0">
                 <DockPanel>
-                    <Label DockPanel.Dock="Top" Target="{Binding ElementName=MachineList}" Padding="0" Margin="0,0,0,4">
-                        <TextBlock Style="{DynamicResource HeadingText}"><AccessText Text="Sa_ved computers" /></TextBlock>
-                    </Label>
+                    <Label DockPanel.Dock="Top" Target="{Binding ElementName=MachineList}" Padding="0" Margin="0,0,0,8"
+                           Content="Sa_ved computers" FontSize="{DynamicResource HeadingFontSize}" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
                     <TextBlock DockPanel.Dock="Top" Style="{DynamicResource SecondaryText}" Margin="0,0,0,12"
                                Text="A computer is a server address, port and key. Press Enter to connect using its usual action." />
                     <WrapPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
@@ -197,8 +197,8 @@
 
                 <!-- What is being said, braille, and activity -->
                 <Border Grid.Row="2" Style="{DynamicResource Card}" Padding="12">
-                    <TabControl x:Name="OutputTabs" BorderThickness="0" Background="Transparent">
-                        <TabItem>
+                    <TabControl x:Name="OutputTabs" BorderThickness="0" Background="Transparent" AutomationProperties.Name="Session output">
+                        <TabItem AutomationProperties.Name="Speech">
                             <TabItem.Header>
                                 <AccessText Text="S_peech" />
                             </TabItem.Header>
@@ -217,7 +217,7 @@
                                 </ListBox>
                             </DockPanel>
                         </TabItem>
-                        <TabItem>
+                        <TabItem AutomationProperties.Name="Braille">
                             <TabItem.Header>
                                 <TextBlock Text="Braille" />
                             </TabItem.Header>
@@ -228,7 +228,7 @@
                                          FontFamily="Segoe UI Symbol" TextWrapping="Wrap" MinHeight="56" AutomationProperties.Name="Braille line" />
                             </StackPanel>
                         </TabItem>
-                        <TabItem>
+                        <TabItem AutomationProperties.Name="Activity">
                             <TabItem.Header>
                                 <AccessText Text="Activit_y" />
                             </TabItem.Header>

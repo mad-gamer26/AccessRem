@@ -57,6 +57,13 @@ from _remoteClient.serializer import JSONSerializer
 from _remoteClient.session import FollowerSession, LeaderSession
 from _remoteClient.transport import Transport
 
+try:
+	# NVDA 2026.3 and later: braille is a package with its extension points in braille.extensions.
+	import braille.extensions as _brailleExtensions
+except ImportError:
+	# NVDA 2025.1 to 2026.2: the extension points are attributes of the braille module.
+	_brailleExtensions = braille
+
 PORT_ENV = "ASSISTBRIDGE_PORT"
 TOKEN_ENV = "ASSISTBRIDGE_TOKEN"
 SILENT_SYNTH = "assistBridgeSilent"
@@ -238,8 +245,8 @@ class ClientLink:
 		except OSError:
 			log.debugWarning("Unable to write to AssistBridge link", exc_info=True)
 
-	def sendControl(self, name: str, **kwargs: Any) -> None:
-		kwargs["type"] = BRIDGE_PREFIX + name
+	def sendControl(self, controlName: str, /, **kwargs: Any) -> None:
+		kwargs["type"] = BRIDGE_PREFIX + controlName
 		self.sendRaw(json.dumps(kwargs).encode("utf-8") + b"\n")
 
 	def _closeSocket(self) -> None:
@@ -440,9 +447,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._originalPlayCue = _nvdaCues._playCue
 
 		def playCue(cueName: str) -> None:
-			if self.link is not None:
-				cue = _nvdaCues.CUES.get(cueName, {})
-				self.link.sendControl("cue", name=cueName, wave=cue.get("wave"), message=cue.get("message"))
+			# Must never raise: NVDA's session handlers call this before registering their callbacks.
+			try:
+				if self.link is not None:
+					cue = _nvdaCues.CUES.get(cueName, {})
+					self.link.sendControl("cue", name=cueName, wave=cue.get("wave"), message=cue.get("message"))
+			except Exception:
+				log.debugWarning(f"Unable to report cue {cueName!r}", exc_info=True)
 
 		_nvdaCues._playCue = playCue
 
@@ -582,8 +593,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if not text:
 			return
 		if msg.get("asLocalOutput"):
-			# Behaves like any other NVDA output on this computer: forwarded when being controlled.
-			speech.speakMessage(text)
+			# Behaves like any other NVDA message on this computer (speech and braille):
+			# forwarded to the controlling computer when being controlled.
+			import ui
+
+			ui.message(text)
 			return
 		self._allowLocalSpeechDepth += 1
 		try:
@@ -637,7 +651,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if session is not None:
 			try:
 				if isinstance(session, FollowerSession):
-					braille.extensions.filter_displayDimensions.unregister(
+					_brailleExtensions.filter_displayDimensions.unregister(
 						self.localMachine._handleFilterDisplayDimensions,
 					)
 					self.localMachine.setBrailleDisplaySize([])

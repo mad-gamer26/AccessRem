@@ -698,10 +698,10 @@ public sealed class SessionController : INotifyPropertyChanged, IAsyncDisposable
     }
 
     /// <summary>Speak text through the bundled NVDA (test button in Settings).</summary>
-    public async Task SpeakTestAsync(string text)
+    public async Task SpeakTestAsync(string text, bool asLocalOutput = false)
     {
         if (_backend is { IsReady: true })
-            await _backend.SendControlAsync("speak", new JsonObject { ["text"] = text });
+            await _backend.SendControlAsync("speak", new JsonObject { ["text"] = text, ["asLocalOutput"] = asLocalOutput });
     }
 
     // Disconnecting

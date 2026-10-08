@@ -81,7 +81,7 @@ public sealed class NvdaBackend : IAsyncDisposable
         candidates.Add(Path.Combine(AppPaths.AppDirectory, "nvda"));
         // Development layout: dist folder produced by the build script.
         var dir = new DirectoryInfo(AppPaths.AppDirectory);
-        for (var i = 0; i < 6 && dir is not null; i++, dir = dir.Parent)
+        for (var i = 0; i < 8 && dir is not null; i++, dir = dir.Parent)
             candidates.Add(Path.Combine(dir.FullName, "dist", "AssistBridge", "nvda"));
         return candidates.FirstOrDefault(c => File.Exists(Path.Combine(c, "nvda_noUIAccess.exe")) || File.Exists(Path.Combine(c, "nvda.exe")));
     }
@@ -90,7 +90,7 @@ public sealed class NvdaBackend : IAsyncDisposable
     {
         var candidates = new List<string> { Path.Combine(AppPaths.AppDirectory, "backend-addon") };
         var dir = new DirectoryInfo(AppPaths.AppDirectory);
-        for (var i = 0; i < 6 && dir is not null; i++, dir = dir.Parent)
+        for (var i = 0; i < 8 && dir is not null; i++, dir = dir.Parent)
             candidates.Add(Path.Combine(dir.FullName, "addon"));
         return candidates.FirstOrDefault(c => File.Exists(Path.Combine(c, "manifest.ini")) &&
                                                Directory.Exists(Path.Combine(c, "globalPlugins", "assistBridge")));
@@ -153,7 +153,7 @@ public sealed class NvdaBackend : IAsyncDisposable
             "--no-sr-flag",
             "--config-path", _configDirectory,
             "--log-file", LogFile,
-            "--log-level", "20",
+            "--log-level", Environment.GetEnvironmentVariable("ASSISTBRIDGE_NVDA_LOGLEVEL") is { Length: > 0 } level ? level : "20",
         };
         Launch(exe, args, port, token);
 
