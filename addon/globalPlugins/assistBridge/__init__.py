@@ -64,6 +64,13 @@ except ImportError:
 	# NVDA 2025.1 to 2026.2: the extension points are attributes of the braille module.
 	_brailleExtensions = braille
 
+from . import elevation
+
+ELEVATED_WINDOW_MESSAGE = (
+	"This window is running as administrator, so AssistBridge cannot read or control it. "
+	"Installing AssistBridge for all users on this computer fixes this."
+)
+
 PORT_ENV = "ASSISTBRIDGE_PORT"
 TOKEN_ENV = "ASSISTBRIDGE_TOKEN"
 SILENT_SYNTH = "assistBridgeSilent"
@@ -644,6 +651,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				# When Windows shows a UAC or sign-in screen, the copy of NVDA it starts there joins
 				# this session through NVDA's own secure desktop handshake (installed mode only).
 				self._sdHandler.followerSession = self.session
+			self._startElevationWatch()
 		self._pendingMode = mode
 		self.transport = transport
 		self._applyAudioPolicy()
@@ -757,6 +765,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._switchToLocalControl(announce=not silent)
 			except Exception:
 				log.debugWarning("Error leaving remote control", exc_info=True)
+		self._stopElevationWatch()
 		session, self.session = self.session, None
 		self.transport = None
 		if self._sdHandler is not None:
@@ -784,6 +793,52 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self.keyModifiers = set()
 		self._applyAudioPolicy()
 		self._sendState()
+
+	# Windows this NVDA cannot operate
+
+	def _startElevationWatch(self) -> None:
+		"""While being controlled, notice when focus moves to a window this NVDA cannot read or control.
+
+		A portable NVDA has no UI Access, so Windows (User Interface Privilege Isolation) blocks it from
+		reading, and from sending keys to, windows of programs running as administrator. Without this,
+		the helper's keys would silently do nothing. Not needed when NVDA has UI Access (installed mode).
+		"""
+		self._elevatedHwnd = 0
+		try:
+			_integrity, uiAccess = elevation.ownPrivileges()
+		except Exception:
+			log.debugWarning("Unable to determine this NVDA's privileges", exc_info=True)
+			return
+		if uiAccess or getattr(self, "_elevationTimer", None) is not None:
+			return
+		self._elevationTimer = wx.PyTimer(self._checkForegroundElevation)
+		self._elevationTimer.Start(700)
+
+	def _stopElevationWatch(self) -> None:
+		timer = getattr(self, "_elevationTimer", None)
+		if timer is not None:
+			timer.Stop()
+			self._elevationTimer = None
+		self._elevatedHwnd = 0
+
+	def _checkForegroundElevation(self) -> None:
+		session = self.session
+		if not isinstance(session, FollowerSession) or not session.leaders:
+			self._elevatedHwnd = 0
+			return
+		try:
+			outOfReach, hwnd, pid = elevation.foregroundIsOutOfReach()
+		except Exception:
+			log.debugWarning("Unable to check the foreground window", exc_info=True)
+			return
+		if not outOfReach:
+			self._elevatedHwnd = 0
+			return
+		if hwnd == self._elevatedHwnd:
+			return  # Already reported for this window.
+		self._elevatedHwnd = hwnd
+		log.info(f"Foreground window {hwnd:#x} (process {pid}) runs at a higher integrity level than this NVDA")
+		self.announce(ELEVATED_WINDOW_MESSAGE)
 
 	def _onLeaderClosing(self) -> None:
 		self.sendingKeys = False

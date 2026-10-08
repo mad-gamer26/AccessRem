@@ -396,7 +396,11 @@ public sealed class SessionController : INotifyPropertyChanged, IAsyncDisposable
             Muted = state.Muted;
             ReceivingBraille = state.ReceivingBraille;
         });
-        backend.Announcement += text => Post(() => Announce(text));
+        backend.Announcement += text => Post(() =>
+        {
+            Announce(text);
+            Log(text);
+        });
         backend.Cue += (name, wave, message) => Post(() =>
         {
             _sounds.Play(wave);
