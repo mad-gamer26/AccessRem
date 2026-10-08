@@ -117,7 +117,7 @@ public static class SasHelper
     {
         try
         {
-            RunSc($"stop {ServiceName}", ignoreErrors: true);
+            Stop();
             RunSc($"delete {ServiceName}", ignoreErrors: true);
             return 0;
         }
@@ -126,6 +126,33 @@ public static class SasHelper
             if (!quiet)
                 AppLog.Write($"Removing the SAS helper failed: {ex}");
             return 1;
+        }
+    }
+
+    /// <summary>
+    /// Stop the service and wait for it, so that the program file it runs from can be replaced or removed
+    /// (sc stop only asks it to stop).
+    /// </summary>
+    public static void Stop()
+    {
+        try
+        {
+            using var sc = new ServiceController(ServiceName);
+            if (sc.Status == ServiceControllerStatus.Stopped)
+                return;
+            if (sc.Status != ServiceControllerStatus.StopPending)
+                sc.Stop();
+            sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(15));
+            // The status changes just before the service's process exits and releases its program file.
+            Thread.Sleep(500);
+        }
+        catch (InvalidOperationException)
+        {
+            // Not installed.
+        }
+        catch (System.ServiceProcess.TimeoutException)
+        {
+            AppLog.Write("The SAS helper did not stop within 15 seconds.");
         }
     }
 

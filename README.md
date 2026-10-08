@@ -25,13 +25,25 @@ AccessRem uses the same approach as Remote Incident Manager (RIM): it bundles it
 | **Accessibility** | Every control is named and keyboard reachable, with access keys, shortcuts, live-region announcements and a strong focus ring. The app switches to Windows contrast themes automatically and follows Windows text size. |
 | **Tray** | A notification-area icon with session actions and notifications. You can start AccessRem with Windows. |
 
+## Installing
+
+In PowerShell on Windows 10 or 11:
+
+```powershell
+irm https://accessrem.mad-gamer.com | iex
+```
+
+This installs the latest release from GitHub for the current user, without administrator rights. It checks the download against the size and SHA-256 in the release's `latest.json`. Run the same command again to update, reinstall or uninstall. It also offers to update a copy installed for all users. The output is plain lines for screen readers. You can read the script first at <https://accessrem.mad-gamer.com/install.ps1>.
+
+To publish a release, run `.\build.ps1 -Zip` and attach `dist\AccessRem-<version>-windows-x64.zip` and `dist\latest.json` to a GitHub release. The installer always uses the latest release, so the site needs no change. `deploy\Deploy-Site.ps1` deploys the installer and its nginx site (`deploy\accessrem.mad-gamer.com.conf`) to mad-gamer.com.
+
 ## Building
 
 Requirements: Windows 10/11 x64, the .NET 8 SDK, 7-Zip (to unpack the NVDA launcher) and Python 3 (tests only).
 
 ```powershell
 .\build.ps1              # app + add-on + downloads and bundles NVDA 2026.2 into dist\AccessRem
-.\build.ps1 -Zip         # also produces dist\AccessRem-<version>.zip
+.\build.ps1 -Zip         # also produces dist\AccessRem-<version>-windows-x64.zip and dist\latest.json
 .\build.ps1 -SkipNvda    # rebuild only the app and add-on
 ```
 

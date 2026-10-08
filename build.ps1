@@ -13,7 +13,7 @@
     Build only the app and add-on (keeps any NVDA already in dist).
 
 .PARAMETER Zip
-    Also produce dist\AccessRem-<version>.zip.
+    Also produce dist\AccessRem-<version>-windows-x64.zip and its release manifest, dist\latest.json.
 #>
 [CmdletBinding()]
 param(
@@ -84,11 +84,25 @@ Copy-Item (Join-Path $root "LICENSE.txt") $dist -Force -ErrorAction SilentlyCont
 Copy-Item (Join-Path $root "THIRD-PARTY-NOTICES.txt") $dist -Force -ErrorAction SilentlyContinue
 
 if ($Zip) {
-    $appVersion = (Get-Item (Join-Path $dist "AccessRem.exe")).VersionInfo.ProductVersion
-    $zipPath = Join-Path $root "dist\AccessRem-$appVersion.zip"
+    # ProductVersion carries the commit ("1.0.0+6365449..."); release names use the plain version.
+    $appVersion = ((Get-Item (Join-Path $dist "AccessRem.exe")).VersionInfo.ProductVersion -split '\+')[0]
+    $zipName = "AccessRem-$appVersion-windows-x64.zip"
+    $zipPath = Join-Path $root "dist\$zipName"
     if (Test-Path $zipPath) { Remove-Item $zipPath }
     Compress-Archive -Path $dist -DestinationPath $zipPath
     Write-Host "Created $zipPath"
+
+    # The release manifest that install.ps1 (irm https://accessrem.mad-gamer.com | iex) checks the download against.
+    $manifest = [ordered]@{
+        product = "accessrem-windows-x64"
+        version = $appVersion
+        file    = $zipName
+        size    = (Get-Item $zipPath).Length
+        sha256  = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    $manifestPath = Join-Path $root "dist\latest.json"
+    [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json))
+    Write-Host "Created $manifestPath"
 }
 
 Write-Host "Done: $dist"

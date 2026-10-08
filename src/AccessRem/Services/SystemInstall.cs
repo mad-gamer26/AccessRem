@@ -73,6 +73,9 @@ public static class SystemInstall
             if (!source.Equals(Path.GetFullPath(target).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
             {
                 Log($"Copying {source} to {target}");
+                // When updating, the helper service runs from the installed AccessRem.exe and holds it open.
+                // It is installed again below.
+                SasHelper.Stop();
                 CopyDirectory(source, target, skip: new[] { Path.Combine("nvda", "systemConfig") });
             }
             var nvdaDir = Path.Combine(target, "nvda");
