@@ -189,7 +189,7 @@ class ClientLink:
 				failures += 1
 				if failures > 30:
 					log.error("AssistBridge is not reachable; exiting the bundled NVDA.")
-					wx.CallAfter(core.triggerNVDAExit)
+					wx.CallAfter(self.plugin.exitNow)
 					return
 				time.sleep(1)
 				continue
@@ -230,10 +230,12 @@ class ClientLink:
 			log.warning(f"Malformed line from AssistBridge: {line[:200]!r}")
 			return
 		msgType = head.get("type", "")
+		# Both kinds of message are queued to the main thread so they are handled in the order they arrived
+		# (for example a session must be started before the channel_joined that follows it is parsed).
 		if isinstance(msgType, str) and msgType.startswith(BRIDGE_PREFIX):
 			wx.CallAfter(self.plugin.handleControl, msgType[len(BRIDGE_PREFIX) :], head)
 		else:
-			self.plugin.handleRemoteLine(line)
+			wx.CallAfter(self.plugin.handleRemoteLine, line)
 
 	def sendRaw(self, data: bytes) -> None:
 		sock = self.sock
@@ -342,12 +344,27 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._savedSynth: str | None = None
 		self._savedSoundVolume: int | None = None
 		self._originalPlayCue = None
-		portText = os.environ.get(PORT_ENV)
-		token = os.environ.get(TOKEN_ENV, "")
-		if not portText:
-			log.info("AssistBridge backend loaded without a link port; staying idle.")
+		self._pendingMode: ConnectionMode | None = None
+		self._allowExit = False
+		self._originalTriggerExit = None
+		self._originalRestart = None
+		self._sdHandler = None
+		details = _readLinkDetails()
+		if details is None:
+			log.info("AssistBridge backend loaded without link details; staying idle.")
 			return
+		port, token = int(details["port"]), str(details.get("token", ""))
+		if details.get("mode"):
+			self._pendingMode = ConnectionMode(details["mode"])
+		for key, value in (details.get("config") or {}).items():
+			if key in DEFAULT_CONFIG:
+				self.cfg[key] = value
 		_prepareBundledConfig()
+		# Choose the voice and sound policy now, before NVDA says anything:
+		# when this computer is about to be controlled, nothing may be heard here.
+		self._applyAudioPolicy()
+		self._installExitGuard()
+		self._sdHandler = _createSecureDesktopHandler()
 		self.localMachine = BridgeLocalMachine(self)
 		self._patchCues()
 		inputCore.decide_handleRawKey.register(self._processKeyInput)
@@ -357,7 +374,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		post_sessionLockStateChanged.register(self._sessionLockStateChangeHandler)
 		self._localScripts = {self.script_toggleControl, self.script_sendSAS}
 		self._bindConfiguredGestures()
-		self.link = ClientLink(self, int(portText), token)
+		self.link = ClientLink(self, port, token)
 
 	def terminate(self):
 		if self.link is None:
@@ -369,6 +386,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		nvwave.decide_playWaveFile.unregister(self._decideLocalWave)
 		post_sessionLockStateChanged.unregister(self._sessionLockStateChangeHandler)
 		self._unpatchCues()
+		self._removeExitGuard()
+		if self._sdHandler is not None:
+			try:
+				self._sdHandler.terminate()
+			except Exception:
+				log.debugWarning("Error terminating the secure desktop handler", exc_info=True)
+			self._sdHandler = None
 		if self.localMachine is not None:
 			self.localMachine.terminate()
 			self.localMachine = None
@@ -383,17 +407,68 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def onLinkLost(self) -> None:
 		self.stopSession(silent=True)
-		core.triggerNVDAExit()
+		self.exitNow()
+
+	# Exiting
+
+	def _installExitGuard(self) -> None:
+		"""Stop NVDA+Q, the NVDA menu and other routes from closing this NVDA mid-session.
+
+		AssistBridge owns this copy of NVDA, so it must be the one to close it. Every exit path in NVDA
+		goes through core.triggerNVDAExit, and restarts through core.restart.
+		"""
+		self._originalTriggerExit = core.triggerNVDAExit
+		self._originalRestart = core.restart
+
+		def guardedTriggerExit(newNVDA=None) -> bool:
+			if self._allowExit:
+				return self._originalTriggerExit(newNVDA)
+			wx.CallAfter(self._onExitBlocked)
+			return False
+
+		def guardedRestart(disableAddons: bool = False, debugLogging: bool = False):
+			if self._allowExit:
+				return self._originalRestart(disableAddons=disableAddons, debugLogging=debugLogging)
+			# Let AssistBridge restart NVDA so the session carries on.
+			if self.link is not None:
+				self.link.sendControl("request", action="restart_backend")
+
+		core.triggerNVDAExit = guardedTriggerExit
+		core.restart = guardedRestart
+
+	def _removeExitGuard(self) -> None:
+		if self._originalTriggerExit is not None:
+			core.triggerNVDAExit = self._originalTriggerExit
+			self._originalTriggerExit = None
+		if self._originalRestart is not None:
+			core.restart = self._originalRestart
+			self._originalRestart = None
+
+	def _onExitBlocked(self) -> None:
+		self.announce("This copy of NVDA belongs to AssistBridge. To end the session, use Disconnect in AssistBridge.")
+		if self.link is not None:
+			self.link.sendControl("request", action="show")
+
+	def exitNow(self) -> None:
+		"""Exit NVDA; only AssistBridge (or losing it) may cause this."""
+		self._allowExit = True
+		exitFunc = self._originalTriggerExit or core.triggerNVDAExit
+		exitFunc()
 
 	# Output policy
 
 	def remoteOutput(self) -> _RemoteOutputContext:
 		return _RemoteOutputContext(self)
 
+	@property
+	def _role(self) -> ConnectionMode | None:
+		"""The current session's role, or the role AssistBridge started this NVDA for."""
+		return self.mode or self._pendingMode
+
 	def _suppressLocalOutput(self) -> bool:
 		"""Whether output generated by this computer's own screen reading should be silenced."""
 		return (
-			self.mode is ConnectionMode.LEADER
+			self._role is ConnectionMode.LEADER
 			and not self.cfg["readLocalScreen"]
 			and self._remoteOutputDepth == 0
 			and self._allowLocalSpeechDepth == 0
@@ -434,7 +509,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self.link.sendControl("announce", text=text)
 		if not speakLocally:
 			return
-		if self.mode is ConnectionMode.FOLLOWER and not self.cfg["speakLocallyWhenControlled"]:
+		if self._role is ConnectionMode.FOLLOWER and not self.cfg["speakLocallyWhenControlled"]:
 			return
 		self._allowLocalSpeechDepth += 1
 		try:
@@ -465,7 +540,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _applyAudioPolicy(self) -> None:
 		"""Choose the synthesizer and sound volume for the current role."""
 		try:
-			if self.mode is ConnectionMode.FOLLOWER and not self.cfg["speakLocallyWhenControlled"]:
+			if self._role is ConnectionMode.FOLLOWER and not self.cfg["speakLocallyWhenControlled"]:
 				desired = SILENT_SYNTH
 			else:
 				desired = self.cfg.get("synth") or "auto"
@@ -485,7 +560,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				if self.cfg.get("volume") is not None and synth.isSupported("volume"):
 					synth.volume = int(self.cfg["volume"])
 			audio = config.conf["audio"]
-			if self.mode is ConnectionMode.FOLLOWER and not self.cfg["localSoundsWhenControlled"]:
+			if self._role is ConnectionMode.FOLLOWER and not self.cfg["localSoundsWhenControlled"]:
 				if self._savedSoundVolume is None:
 					self._savedSoundVolume = audio["soundVolume"]
 				audio["soundVolumeFollowsVoice"] = False
@@ -538,6 +613,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self.localMachine.isMuted = True
 		else:
 			self.session = FollowerSession(localMachine=self.localMachine, transport=transport)
+			if self._sdHandler is not None:
+				# When Windows shows a UAC or sign-in screen, the copy of NVDA it starts there joins
+				# this session through NVDA's own secure desktop handshake (installed mode only).
+				self._sdHandler.followerSession = self.session
+		self._pendingMode = mode
 		self.transport = transport
 		self._applyAudioPolicy()
 		self._sendState()
@@ -632,6 +712,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self.stopSession(silent=True)
 		if self.link is not None:
 			self.link.close()
+		self.exitNow()
+
+	def _control_try_exit(self, msg: dict[str, Any]) -> None:
+		"""Take the same route as NVDA+Q or Exit in the NVDA menu (used by AssistBridge's tests)."""
 		core.triggerNVDAExit()
 
 	def _control_ping(self, msg: dict[str, Any]) -> None:
@@ -648,6 +732,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				log.debugWarning("Error leaving remote control", exc_info=True)
 		session, self.session = self.session, None
 		self.transport = None
+		if self._sdHandler is not None:
+			try:
+				self._sdHandler.followerSession = None
+			except Exception:
+				log.debugWarning("Error leaving the secure desktop", exc_info=True)
 		if session is not None:
 			try:
 				if isinstance(session, FollowerSession):
@@ -866,6 +955,44 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	@scriptHandler.script(description="Mutes or unmutes speech and sounds from the remote computer")
 	def script_toggleMute(self, gesture):
 		self.toggleMute()
+
+
+LINK_FILE_NAME = "assistbridge-link.json"
+
+
+def _readLinkDetails() -> dict[str, Any] | None:
+	"""How to reach AssistBridge, and the role and settings for this run.
+
+	AssistBridge writes a private file into this NVDA's configuration folder before starting it
+	(needed when Windows starts the UI Access build, which may not inherit the environment).
+	The port and token may also come from the environment.
+	"""
+	import globalVars
+
+	details: dict[str, Any] = {}
+	path = os.path.join(globalVars.appArgs.configPath or "", LINK_FILE_NAME)
+	try:
+		with open(path, "r", encoding="utf-8") as f:
+			details = json.load(f)
+		os.remove(path)
+	except FileNotFoundError:
+		pass
+	except Exception:
+		log.error("Unable to read the AssistBridge link file", exc_info=True)
+	if os.environ.get(PORT_ENV):
+		details["port"] = os.environ[PORT_ENV]
+		details["token"] = os.environ.get(TOKEN_ENV, "")
+	return details if details.get("port") else None
+
+
+def _createSecureDesktopHandler():
+	try:
+		from _remoteClient.secureDesktop import SecureDesktopHandler
+
+		return SecureDesktopHandler()
+	except Exception:
+		log.warning("Secure desktop support is unavailable", exc_info=True)
+		return None
 
 
 def _prepareBundledConfig() -> None:

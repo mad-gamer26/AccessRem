@@ -106,6 +106,9 @@ public sealed class SessionController : INotifyPropertyChanged, IAsyncDisposable
     /// <summary>A short message that should be presented to the user (status area, live region, notification).</summary>
     public event Action<string>? Announced;
 
+    /// <summary>The bundled NVDA asked for the AssistBridge window to be brought forward.</summary>
+    public event Action? ShowRequested;
+
     public ObservableCollection<TranscriptEntry> Transcript { get; } = new();
     public ObservableCollection<EventEntry> Events { get; } = new();
 
@@ -123,6 +126,10 @@ public sealed class SessionController : INotifyPropertyChanged, IAsyncDisposable
     public string BrailleText { get => _brailleText; private set => Set(ref _brailleText, value); }
     public string? ExternalAddress { get => _externalAddress; set => Set(ref _externalAddress, value); }
     public string? BackendVersion => _backend?.NvdaVersion;
+    internal int? BackendProcessId => _backend?.ProcessId;
+
+    /// <summary>Test hook: ask NVDA to exit the way NVDA+Q would (it must refuse during a session).</summary>
+    internal Task TryExitBackendAsync() => _backend?.SendControlAsync("try_exit") ?? Task.CompletedTask;
     public IReadOnlyList<(string Name, string Description)> AvailableSynths => _backend?.Synths ?? Array.Empty<(string, string)>();
 
     public ConnectionMode? Mode => Info?.Mode;
@@ -250,15 +257,132 @@ public sealed class SessionController : INotifyPropertyChanged, IAsyncDisposable
                 Log("NVDA was already running and will be restored when the session ends.");
             }
         }
+        await StartBackendAsync(nvdaDir);
+        return true;
+    }
+
+    private async Task StartBackendAsync(string nvdaDir)
+    {
+        var desktop = Environment.GetEnvironmentVariable("ASSISTBRIDGE_BACKEND_DESKTOP");
         var backend = new NvdaBackend(nvdaDir, AppPaths.NvdaConfigDirectory, string.IsNullOrEmpty(desktop) ? null : desktop);
         WireBackend(backend);
         _backend = backend;
-        await backend.StartAsync(CancellationToken.None);
+        await backend.StartAsync(Info?.Mode, _store.Current, CancellationToken.None);
         await backend.ConfigureAsync(_store.Current);
         OnPropertyChanged(nameof(BackendVersion));
         OnPropertyChanged(nameof(AvailableSynths));
-        Log($"Speech engine ready (NVDA {backend.NvdaVersion}).");
-        return true;
+        Log($"Speech engine ready (NVDA {backend.NvdaVersion}{(backend.UsesUiAccess ? ", installed, secure screens supported" : "")}).");
+        UpdateSecureScreenRegistration(backend, sessionActive: true);
+        if (backend.UsesUiAccess && Info?.Mode == ConnectionMode.Follower)
+        {
+            var error = await SasHelper.SetSecureScreenSpeechAsync(_store.Current.SpeakLocallyWhenControlled);
+            if (error is not null)
+                Log($"Unable to update secure screen speech: {error}");
+        }
+    }
+
+    /// <summary>
+    /// Decide which screen reader Windows starts on User Account Control and sign-in screens during the session.
+    /// Installed mode: AssistBridge's NVDA, which joins the session through NVDA's secure desktop handshake.
+    /// A separately installed NVDA is held back while AssistBridge's copy is in charge: it could not join the
+    /// session and would only speak aloud on this computer.
+    /// </summary>
+    private void UpdateSecureScreenRegistration(NvdaBackend? backend, bool sessionActive)
+    {
+        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASSISTBRIDGE_BACKEND_DESKTOP")))
+            return; // Isolated test desktop: never touch the real Ease of Access state.
+        try
+        {
+            var states = new Dictionary<string, int>();
+            if (backend?.UsesUiAccess == true || (!sessionActive && SystemInstall.IsRunningInstalledCopy))
+                states[SystemInstall.AtName] = sessionActive && Info?.Mode == ConnectionMode.Follower ? 3 : 2;
+            if (sessionActive && SystemInstall.IsAtRegistered(SystemInstall.NvdaAtName))
+                states[SystemInstall.NvdaAtName] = 2;
+            AtBroker.Notify(states);
+        }
+        catch (Exception ex)
+        {
+            Log($"Unable to update secure screen settings: {ex.Message}");
+        }
+    }
+
+    // Recovery when the bundled NVDA stops during a session
+
+    private static readonly TimeSpan RestartWindow = TimeSpan.FromMinutes(2);
+    private const int MaxRestartsInWindow = 3;
+    private readonly List<DateTime> _restartTimes = new();
+    private readonly Dictionary<int, byte[]> _leaderBrailleInfo = new();
+
+    private async Task RecoverBackendAsync(NvdaBackend failed, string reason, bool planned)
+    {
+        if (failed != _backend)
+            return;
+        _backend = null;
+        await failed.DisposeAsync();
+        if (!IsActive)
+            return;
+        AppLog.Write(reason);
+        var now = DateTime.UtcNow;
+        _restartTimes.RemoveAll(t => now - t > RestartWindow);
+        if (!planned && _restartTimes.Count >= MaxRestartsInWindow)
+        {
+            await DisconnectAsync(silent: true);
+            _ui.ShowError("Session ended",
+                $"{reason} It stopped {MaxRestartsInWindow} times within {RestartWindow.TotalMinutes:0} minutes, so the session was disconnected. Details are in {failed.LogFile}.");
+            return;
+        }
+        if (!planned)
+            _restartTimes.Add(now);
+        Log(planned ? "Restarting the speech engine." : $"{reason} Restarting it; the connection stays open.");
+        Announce(planned ? "Restarting speech" : "Speech stopped unexpectedly. Restarting");
+        SendingKeys = false;
+        try
+        {
+            var nvdaDir = NvdaBackend.LocateBundledNvda(_store.Current.NvdaPathOverride)
+                ?? throw new BackendUnavailableException("The bundled copy of NVDA is missing.");
+            await StartBackendAsync(nvdaDir);
+            await RestoreBackendSessionAsync();
+            Log("The speech engine was restarted and the session restored.");
+            Announce("Speech restored");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write($"Restarting the speech engine failed: {ex}");
+            await DisconnectAsync(silent: true);
+            _ui.ShowError("Session ended", $"The speech engine could not be restarted, so the session was disconnected.\n\n{ex.Message}");
+        }
+    }
+
+    /// <summary>Bring a fresh NVDA up to date with the session that is already running on the network.</summary>
+    private async Task RestoreBackendSessionAsync()
+    {
+        var backend = _backend;
+        var info = Info;
+        if (backend is null || info is null)
+            return;
+        await backend.SendControlAsync("session_start", new JsonObject
+        {
+            ["mode"] = info.Mode.WireValue(),
+            ["hostname"] = info.Host,
+            ["port"] = info.Port,
+            ["key"] = info.Key,
+        });
+        if (_network is not { IsConnected: true } network)
+            return;
+        await backend.SendControlAsync("net_state", new JsonObject { ["connected"] = true });
+        // Replay who is in the channel, as the relay does when joining.
+        var peers = network.Peers.Where(p => p.Mode is not null).ToList();
+        var joined = Protocol.Message(Protocol.MsgChannelJoined,
+            ("channel", info.Key),
+            ("user_ids", new JsonArray(peers.Select(p => (JsonNode)JsonValue.Create(p.Id)).ToArray())),
+            ("clients", new JsonArray(peers.Select(p => (JsonNode)new JsonObject { ["id"] = p.Id, ["connection_type"] = p.Mode!.Value.WireValue() }).ToArray())));
+        await backend.SendProtocolLineAsync(Protocol.Encode(joined)[..^1]);
+        // And the controlling computers' braille display sizes.
+        List<byte[]> brailleInfo;
+        lock (_leaderBrailleInfo)
+            brailleInfo = _leaderBrailleInfo.Values.ToList();
+        foreach (var line in brailleInfo)
+            await backend.SendProtocolLineAsync(line);
     }
 
     private void WireBackend(NvdaBackend backend)
@@ -281,22 +405,20 @@ public sealed class SessionController : INotifyPropertyChanged, IAsyncDisposable
         });
         backend.Request += action => Post(async () =>
         {
-            if (action == "push_clipboard")
-                await PushClipboardAsync();
-        });
-        backend.Exited += reason => Post(async () =>
-        {
-            if (backend != _backend)
-                return;
-            AppLog.Write(reason);
-            _backend = null;
-            await backend.DisposeAsync();
-            if (IsActive)
+            switch (action)
             {
-                await DisconnectAsync(silent: true);
-                _ui.ShowError("Session ended", $"{reason} The session was disconnected. Details are in {backend.LogFile}.");
+                case "push_clipboard":
+                    await PushClipboardAsync();
+                    break;
+                case "show":
+                    ShowRequested?.Invoke();
+                    break;
+                case "restart_backend":
+                    await RecoverBackendAsync(backend, "NVDA asked to restart.", planned: true);
+                    break;
             }
         });
+        backend.Exited += reason => Post(() => RecoverBackendAsync(backend, reason, planned: false));
     }
 
     private void StartNetwork(ConnectionInfo info)
@@ -485,6 +607,18 @@ public sealed class SessionController : INotifyPropertyChanged, IAsyncDisposable
                 if (Info?.Mode == ConnectionMode.Follower)
                     Post(HandleIncomingSas);
                 return;
+            case Protocol.MsgSetBrailleInfo when Info?.Mode == ConnectionMode.Follower:
+                // Remembered so a restarted NVDA can be told the helpers' braille display sizes.
+                if (Protocol.GetInt(msg, "origin") is { } brailleOrigin)
+                    lock (_leaderBrailleInfo)
+                        _leaderBrailleInfo[brailleOrigin] = line;
+                break;
+            case Protocol.MsgClientLeft:
+                var leftId = msg["client"] is JsonObject leftClient ? Protocol.GetInt(leftClient, "id") : Protocol.GetInt(msg, "user_id");
+                if (leftId is { } id)
+                    lock (_leaderBrailleInfo)
+                        _leaderBrailleInfo.Remove(id);
+                break;
             case Protocol.MsgSpeak when Info?.Mode == ConnectionMode.Leader:
                 AddTranscript(TranscriptDirection.Received, msg);
                 break;
@@ -739,7 +873,13 @@ public sealed class SessionController : INotifyPropertyChanged, IAsyncDisposable
             await server.DisposeAsync();
         // Stop the bundled NVDA between sessions so it never affects this computer while idle.
         if (backend is not null)
+        {
             await backend.DisposeAsync();
+            UpdateSecureScreenRegistration(null, sessionActive: false);
+        }
+        lock (_leaderBrailleInfo)
+            _leaderBrailleInfo.Clear();
+        _restartTimes.Clear();
         if (_replacedNvda is { } replaced)
         {
             _replacedNvda = null;

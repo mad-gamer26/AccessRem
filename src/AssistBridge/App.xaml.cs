@@ -47,6 +47,7 @@ public partial class App : Application
         Main.Attach(Settings, Session);
         _tray = new TrayIcon(this);
         Session.Announced += text => _tray.Notify(text, Main.IsActive);
+        Session.ShowRequested += ShowMainWindow;
 
         _instance.ArgumentsReceived += args => Dispatcher.BeginInvoke(() => HandleArguments(args, fromAnotherInstance: true));
         _instance.Listen();
@@ -176,6 +177,15 @@ public partial class App : Application
         await Session.DisposeAsync();
         _tray?.Dispose();
         _instance.Dispose();
+        Shutdown();
+    }
+
+    /// <summary>Close this copy and start another (used after installing for all users).</summary>
+    public void RelaunchFrom(string exe)
+    {
+        _tray?.Dispose();
+        _instance.Dispose();
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = true });
         Shutdown();
     }
 

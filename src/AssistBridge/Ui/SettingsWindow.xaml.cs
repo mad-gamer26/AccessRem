@@ -41,6 +41,7 @@ public partial class SettingsWindow : Window
         LocalSounds.IsChecked = s.LocalSoundsWhenControlled;
         AllowSas.IsChecked = s.AllowCtrlAltDel;
         EstimatedRate.Value = s.EstimatedRemoteRate;
+        UpdateSecureScreenStatus();
         UpdateSasStatus();
 
         ReadLocalScreen.IsChecked = s.ReadLocalScreen;
@@ -73,6 +74,79 @@ public partial class SettingsWindow : Window
         NvdaPath.Text = s.NvdaPathOverride ?? "";
         NvdaPathStatus.Text = NvdaBackend.LocateBundledNvda(s.NvdaPathOverride) is { } dir ? $"Using NVDA in {dir}." : "NVDA was not found. Sessions cannot start until it is available.";
         TranscriptLimit.Text = s.TranscriptLimit.ToString();
+    }
+
+    private void UpdateSecureScreenStatus()
+    {
+        if (SystemInstall.IsRunningInstalledCopy)
+        {
+            SecureScreenStatus.Text = "AssistBridge is installed for all users. When Windows shows a User Account Control or sign-in screen " +
+                                      "during a session, your helper can read and use it.";
+            InstallSystemButton.Visibility = Visibility.Collapsed;
+            UninstallSystemButton.Visibility = Visibility.Visible;
+        }
+        else if (SystemInstall.IsInstalled)
+        {
+            SecureScreenStatus.Text = $"AssistBridge is installed in {SystemInstall.InstalledDirectory}, but you are using a different copy. " +
+                                      "Start AssistBridge from the Start menu so your helper can use User Account Control and sign-in screens.";
+            InstallSystemButton.Content = "Update the _installed copy…";
+            UninstallSystemButton.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            SecureScreenStatus.Text = "Your helper cannot read User Account Control or sign-in screens yet. Installing AssistBridge for all users " +
+                                      "(in Program Files, with administrator permission) lets Windows start AssistBridge's NVDA on those screens during a session. " +
+                                      "It also installs the helper service for Control+Alt+Delete.";
+            UninstallSystemButton.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void InstallSystem_Click(object sender, RoutedEventArgs e)
+    {
+        if (_session.IsActive)
+        {
+            System.Windows.MessageBox.Show(this, "Disconnect before installing.", "Install for all users", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (!SasHelper.RunElevated($"--install-system \"{AppPaths.AppDirectory.TrimEnd('\\')}\""))
+        {
+            System.Windows.MessageBox.Show(this, $"AssistBridge was not installed. Details are in {AppLog.FilePath}.", "Install for all users",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            UpdateSecureScreenStatus();
+            UpdateSasStatus();
+            return;
+        }
+        UpdateSecureScreenStatus();
+        UpdateSasStatus();
+        if (!SystemInstall.IsRunningInstalledCopy && SystemInstall.InstalledDirectory is { } dir &&
+            System.Windows.MessageBox.Show(this, $"AssistBridge is installed in {dir} and has a Start menu shortcut. Switch to the installed copy now?",
+                "Install for all users", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes) == MessageBoxResult.Yes)
+        {
+            DialogResult = false;
+            App.Current.RelaunchFrom(Path.Combine(dir, "AssistBridge.exe"));
+        }
+    }
+
+    private void UninstallSystem_Click(object sender, RoutedEventArgs e)
+    {
+        if (_session.IsActive)
+        {
+            System.Windows.MessageBox.Show(this, "Disconnect before uninstalling.", "Uninstall", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var runningInstalled = SystemInstall.IsRunningInstalledCopy;
+        if (System.Windows.MessageBox.Show(this, "Remove AssistBridge for all users, including secure screen support and the helper service? " +
+                "Your saved computers and settings are kept.", "Uninstall", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
+            return;
+        SasHelper.RunElevated("--uninstall-system --confirmed");
+        if (runningInstalled)
+        {
+            // The program folder is removed once this copy exits.
+            _ = App.Current.ExitAsync();
+            return;
+        }
+        UpdateSecureScreenStatus();
+        UpdateSasStatus();
     }
 
     private void UpdateSasStatus()

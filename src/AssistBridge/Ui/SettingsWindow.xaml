@@ -39,6 +39,13 @@
                         <CheckBox x:Name="AllowSas"><AccessText Text="_Allow the helper to send Control+Alt+Delete" TextWrapping="Wrap" /></CheckBox>
                         <Border Style="{DynamicResource Card}" Margin="0,8,0,12" Padding="12">
                             <StackPanel>
+                                <TextBlock Text="User Account Control and sign-in screens" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                <TextBlock x:Name="SecureScreenStatus" TextWrapping="Wrap" />
+                                <WrapPanel Margin="0,8,0,12">
+                                    <Button x:Name="InstallSystemButton" Content="Install for all _users…" Margin="0,0,8,0" Click="InstallSystem_Click" />
+                                    <Button x:Name="UninstallSystemButton" Content="U_ninstall…" Click="UninstallSystem_Click" />
+                                </WrapPanel>
+                                <TextBlock Text="Control+Alt+Delete" FontWeight="SemiBold" Margin="0,0,0,4" />
                                 <TextBlock x:Name="SasStatus" TextWrapping="Wrap" />
                                 <WrapPanel Margin="0,8,0,0">
                                     <Button x:Name="InstallSasButton" Content="_Install helper service…" Margin="0,0,8,0" Click="InstallSas_Click" />

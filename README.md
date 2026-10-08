@@ -65,10 +65,43 @@ The add-on gives NVDA's built-in `_remoteClient` sessions a transport whose othe
 
 The bundled NVDA runs only while a session is active. If NVDA is already running, AssistBridge asks before temporarily replacing it, then restarts it after the session.
 
+## Silence on the computer being helped
+
+When this computer is being controlled, AssistBridge writes the session role into a private link file before starting NVDA. The add-on switches NVDA to the silent relay voice and mutes NVDA's sounds as it loads, before NVDA says anything. The only sounds the person hears are AssistBridge's connection cues, which can be turned off in Settings › General.
+
+## Resilience
+
+The network connection belongs to AssistBridge, so the bundled NVDA can be replaced without dropping the session:
+
+- **NVDA can't be closed by accident.** NVDA+Q, NVDA's Exit menu item and the exit dialog are refused during a session. The refusal is announced and AssistBridge is brought forward.
+- **Restart requests are handled by AssistBridge.** If NVDA asks to restart itself, AssistBridge restarts it instead.
+- **Crashes are recovered.** If NVDA stops unexpectedly, AssistBridge restarts it and replays the session state: who is connected, and the helpers' braille display sizes.
+  - This allows up to 3 restarts within 2 minutes.
+  - The other computer hears a short gap, not a disconnect.
+
+## Installed mode: User Account Control and sign-in screens
+
+**Settings › Getting help › Install for all users** (administrator) sets up the following:
+
+1. Copies AssistBridge to `C:\Program Files\AssistBridge`.
+2. Makes `nvda\nvda.exe` a copy of NVDA's signed UI Access build. NVDA's own installer does the same.
+3. Registers that copy with Windows Ease of Access under its own name (`assistbridge_nvda`), so a separately installed NVDA's registration is never touched.
+4. Writes a `systemConfig` for secure screens: NVDA Remote Access on, and silent unless "Speak on this computer too" is chosen.
+5. Installs the AssistBridge Helper service. It handles Ctrl+Alt+Del, and applies the speak-locally choice to secure screens.
+6. Adds a Start menu shortcut and an entry in Windows' installed apps list (for uninstalling).
+
+During a session as the controlled computer, the installed copy works like this:
+
+1. AssistBridge runs the same signed executable on the user's desktop.
+2. It tells the Ease of Access broker that this screen reader is running. A separately installed NVDA is held back for the session, because it couldn't join and would only speak aloud.
+3. When a UAC prompt appears, the add-on runs NVDA's own secure desktop handshake: a private local relay, plus connection details in shared memory.
+4. The NVDA that Windows starts on the secure screen joins the session through that handshake, so the helper hears and operates the prompt.
+5. NVDA checks that both copies are the same executable before connecting.
+
 ## Limitations
 
-- Like any portable copy of NVDA, the bundled NVDA can't read or operate User Account Control and sign-in secure screens. It also can't control programs running as administrator unless AssistBridge itself runs as administrator.
-- Receiving Ctrl+Alt+Del requires the optional helper service (Settings › Getting help). Installing it needs administrator permission.
+- Without installed mode, the bundled NVDA behaves like a portable NVDA. It can't read secure screens, or programs running as administrator.
+- Receiving Ctrl+Alt+Del requires the helper service, which installed mode includes. It can also be installed on its own.
 
 ## License
 

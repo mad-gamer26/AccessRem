@@ -127,7 +127,11 @@ public sealed class InfoWindow : Window
         "SECURITY\n" +
         "Connections are encrypted. If a server's certificate cannot be verified, you are shown its fingerprint and asked before connecting. " +
         "Keys are stored encrypted for your Windows account.\n\n" +
-        "LIMITS\n" +
-        "Like a portable copy of NVDA, the copy inside AssistBridge cannot read or operate the secure screens Windows shows for User Account Control and sign-in, " +
-        "or programs running as administrator, unless AssistBridge is run as administrator.";
+        "USER ACCOUNT CONTROL AND SIGN-IN SCREENS\n" +
+        "To let a helper read and answer User Account Control prompts, install AssistBridge for all users (Settings › Getting help). " +
+        "Windows then starts AssistBridge's NVDA on those secure screens during a session, and it joins the session automatically. " +
+        "Without installing, AssistBridge works like a portable copy of NVDA: it cannot read those screens, or programs running as administrator.\n\n" +
+        "IF THE SPEECH ENGINE STOPS\n" +
+        "AssistBridge's NVDA cannot be closed with NVDA+Q or NVDA's menu during a session; use Disconnect in AssistBridge. " +
+        "If it stops unexpectedly, AssistBridge restarts it within a few seconds and the connection stays open.";
 }

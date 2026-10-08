@@ -17,7 +17,7 @@ namespace AssistBridge.Services;
 public static class SasHelper
 {
     public const string ServiceName = "AssistBridgeSas";
-    public const string DisplayName = "AssistBridge Control+Alt+Delete Helper";
+    public const string DisplayName = "AssistBridge Helper";
     private const string PipeName = "AssistBridgeSas";
     private const string PolicyKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System";
     private const string PolicyValue = "SoftwareSASGeneration";
@@ -40,14 +40,20 @@ public static class SasHelper
     }
 
     /// <summary>Ask the helper service to send control+alt+delete. Returns an error message, or null on success.</summary>
-    public static async Task<string?> TrySendAsync()
+    public static Task<string?> TrySendAsync() => SendCommandAsync("sas");
+
+    /// <summary>Choose whether NVDA on User Account Control and sign-in screens is heard on this computer (installed mode).</summary>
+    public static Task<string?> SetSecureScreenSpeechAsync(bool speakLocally) =>
+        SendCommandAsync(speakLocally ? "secure-speech on" : "secure-speech off");
+
+    private static async Task<string?> SendCommandAsync(string command)
     {
         try
         {
             await using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
             await pipe.ConnectAsync(cts.Token).ConfigureAwait(false);
-            var request = Encoding.UTF8.GetBytes("sas\n");
+            var request = Encoding.UTF8.GetBytes(command + "\n");
             await pipe.WriteAsync(request, cts.Token).ConfigureAwait(false);
             await pipe.FlushAsync(cts.Token).ConfigureAwait(false);
             var buffer = new byte[512];
@@ -57,7 +63,7 @@ public static class SasHelper
         }
         catch (Exception ex) when (ex is System.TimeoutException or OperationCanceledException or IOException)
         {
-            return "The Control+Alt+Delete helper service is not running. Install it from Settings › Advanced.";
+            return "The AssistBridge helper service is not running. Install it from Settings › Getting help.";
         }
     }
 
@@ -82,11 +88,11 @@ public static class SasHelper
     }
 
     /// <summary>Elevated: register the service and allow services to simulate the SAS.</summary>
-    public static int Install()
+    public static int Install(string? exePath = null)
     {
         try
         {
-            var exe = Environment.ProcessPath!;
+            var exe = exePath ?? Environment.ProcessPath!;
             Uninstall(quiet: true);
             RunSc($"create {ServiceName} binPath= \"\\\"{exe}\\\" --sas-service\" start= auto DisplayName= \"{DisplayName}\"");
             RunSc($"description {ServiceName} \"Lets AssistBridge send Control+Alt+Delete when a remote helper requests it.\"");
@@ -197,6 +203,20 @@ public static class SasHelper
                         catch (Exception ex)
                         {
                             reply = "Windows refused to send Control+Alt+Delete: " + ex.Message;
+                        }
+                    }
+                    else if (request is "secure-speech on" or "secure-speech off")
+                    {
+                        // Only ever writes this installation's own secure-screen configuration.
+                        var nvdaDir = Path.Combine(AppContext.BaseDirectory, "nvda");
+                        if (Directory.Exists(nvdaDir))
+                        {
+                            SystemInstall.WriteSecureScreenConfig(nvdaDir, speakLocally: request.EndsWith(" on"));
+                            reply = "ok";
+                        }
+                        else
+                        {
+                            reply = "AssistBridge is not installed for all users.";
                         }
                     }
                     else

@@ -60,6 +60,7 @@ public sealed class NvdaBackend : IAsyncDisposable
     public string NvdaDirectory => _nvdaDirectory;
     public string LogFile => Path.Combine(AppPaths.LogDirectory, "nvda-backend.log");
     public bool IsReady { get; private set; }
+    public int? ProcessId => _process?.Id;
     public string? NvdaVersion { get; private set; }
     public IReadOnlyList<(string Name, string Description)> Synths { get; private set; } = Array.Empty<(string, string)>();
     public BackendState? State { get; private set; }
@@ -131,13 +132,20 @@ public sealed class NvdaBackend : IAsyncDisposable
         Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe)! });
     }
 
-    public async Task StartAsync(CancellationToken ct)
+    /// <summary>True when NVDA runs as the signed UI Access build of an installed copy (needed on secure screens).</summary>
+    public bool UsesUiAccess { get; private set; }
+
+    /// <param name="mode">The session role NVDA is started for; it applies the matching voice before saying anything.</param>
+    public async Task StartAsync(ConnectionMode? mode, AppSettings settings, CancellationToken ct)
     {
-        var exe = Path.Combine(_nvdaDirectory, "nvda_noUIAccess.exe");
+        // Installed mode: the UI Access build, which must be the same executable Windows starts on secure screens.
+        var uiAccessExe = string.IsNullOrEmpty(_desktopName) ? Services.SystemInstall.InstalledNvdaExecutable(_nvdaDirectory) : null;
+        var exe = uiAccessExe ?? Path.Combine(_nvdaDirectory, "nvda_noUIAccess.exe");
         if (!File.Exists(exe))
             exe = Path.Combine(_nvdaDirectory, "nvda.exe");
         if (!File.Exists(exe))
             throw new BackendUnavailableException($"The bundled copy of NVDA was not found in {_nvdaDirectory}.");
+        UsesUiAccess = uiAccessExe is not null;
 
         PrepareConfiguration();
 
@@ -145,6 +153,7 @@ public sealed class NvdaBackend : IAsyncDisposable
         _listener.Start(1);
         var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
+        WriteLinkFile(port, token, mode, settings);
 
         Directory.CreateDirectory(AppPaths.LogDirectory);
         var args = new[]
@@ -155,7 +164,10 @@ public sealed class NvdaBackend : IAsyncDisposable
             "--log-file", LogFile,
             "--log-level", Environment.GetEnvironmentVariable("ASSISTBRIDGE_NVDA_LOGLEVEL") is { Length: > 0 } level ? level : "20",
         };
-        Launch(exe, args, port, token);
+        if (UsesUiAccess)
+            LaunchWithShellExecute(exe, args);
+        else
+            Launch(exe, args, port, token);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct, _stop.Token);
         timeout.CancelAfter(StartupTimeout);
@@ -216,6 +228,45 @@ public sealed class NvdaBackend : IAsyncDisposable
         // Stale caches from an older add-on version must not be used.
         foreach (var cache in Directory.EnumerateDirectories(target, "__pycache__", SearchOption.AllDirectories).ToList())
             Directory.Delete(cache, true);
+    }
+
+    /// <summary>
+    /// The add-on reads its link details, role and settings from this file as it loads (and deletes it).
+    /// It lives in this user's own configuration folder, and also works when Windows starts NVDA on our behalf.
+    /// </summary>
+    private void WriteLinkFile(int port, string token, ConnectionMode? mode, AppSettings settings)
+    {
+        var details = new JsonObject
+        {
+            ["port"] = port,
+            ["token"] = token,
+            ["mode"] = mode?.WireValue(),
+            ["config"] = ConfigValues(settings),
+        };
+        File.WriteAllText(Path.Combine(_configDirectory, "assistbridge-link.json"), details.ToJsonString());
+    }
+
+    private void LaunchWithShellExecute(string exe, string[] args)
+    {
+        // A UI Access program can only be started through ShellExecute (the AppInfo service checks its signature).
+        var psi = new ProcessStartInfo(exe)
+        {
+            UseShellExecute = true,
+            WorkingDirectory = _nvdaDirectory,
+        };
+        foreach (var arg in args)
+            psi.ArgumentList.Add(arg);
+        _process = Process.Start(psi) ?? throw new BackendUnavailableException("The installed copy of NVDA could not be started.");
+        _job = Native.CreateJobObject(IntPtr.Zero, null);
+        if (_job != IntPtr.Zero)
+        {
+            var info = new Native.JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
+            info.BasicLimitInformation.LimitFlags = Native.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            Native.SetInformationJobObject(_job, Native.JobObjectExtendedLimitInformation, ref info, Marshal.SizeOf(info));
+            Native.AssignProcessToJobObject(_job, _process.Handle);
+        }
+        _process.EnableRaisingEvents = true;
+        _process.Exited += (_, _) => RaiseExited("The bundled copy of NVDA exited.");
     }
 
     private static void CopyDirectory(string source, string destination)
@@ -388,10 +439,10 @@ public sealed class NvdaBackend : IAsyncDisposable
         }
     }
 
-    public Task ConfigureAsync(AppSettings s) => SendControlAsync("config", new JsonObject
+    public Task ConfigureAsync(AppSettings s) => SendControlAsync("config", new JsonObject { ["values"] = ConfigValues(s) });
+
+    private static JsonObject ConfigValues(AppSettings s) => new()
     {
-        ["values"] = new JsonObject
-        {
             ["readLocalScreen"] = s.ReadLocalScreen,
             ["speakLocallyWhenControlled"] = s.SpeakLocallyWhenControlled,
             ["localSoundsWhenControlled"] = s.LocalSoundsWhenControlled,
@@ -404,8 +455,7 @@ public sealed class NvdaBackend : IAsyncDisposable
             ["pushClipboardGestures"] = new JsonArray(s.PushClipboardGestures.Select(g => (JsonNode)g).ToArray()),
             ["sasGestures"] = new JsonArray(s.SendSasGestures.Select(g => (JsonNode)g).ToArray()),
             ["toggleMuteGestures"] = new JsonArray(s.ToggleMuteGestures.Select(g => (JsonNode)g).ToArray()),
-        },
-    });
+    };
 
     private async Task KillAsync()
     {
