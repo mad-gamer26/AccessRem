@@ -180,7 +180,8 @@ public static class SystemInstall
         ini.AppendLine("\taskedAllowUsageStats = True");
         ini.AppendLine("\tallowUsageStats = False");
         ini.AppendLine("[keyboard]");
-        // NVDA key: Caps Lock, numpad Insert and extended Insert.
+        // Laptop layout, with Caps Lock, numpad Insert and extended Insert as the NVDA key.
+        ini.AppendLine("\tkeyboardLayout = laptop");
         ini.AppendLine("\tNVDAModifierKeys = 7");
         ini.AppendLine("[speech]");
         ini.AppendLine($"\tsynth = {(speakLocally ? "auto" : "silence")}");

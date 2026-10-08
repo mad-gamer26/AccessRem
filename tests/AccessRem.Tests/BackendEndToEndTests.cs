@@ -113,8 +113,9 @@ public class BackendEndToEndTests
             Assert.Empty(ui.Errors);
             Assert.False(ctx.Get(() => session.IsActive));
 
-            // NVDA saved its configuration on exit: Caps Lock and both Insert keys act as the NVDA key.
+            // NVDA saved its configuration on exit: the laptop layout, with Caps Lock and both Insert keys as the NVDA key.
             var nvdaIni = File.ReadAllText(Path.Combine(dataDir, "nvdaConfig", "nvda.ini"));
+            Assert.Matches(@"keyboardLayout\s*=\s*laptop", nvdaIni);
             Assert.Matches(@"NVDAModifierKeys\s*=\s*7", nvdaIni);
         }
         catch

@@ -12,7 +12,7 @@ AccessRem uses the same approach as Remote Incident Manager (RIM): it bundles it
 
 | | |
 |---|---|
-| **Get help** (be controlled) | The bundled NVDA reads this computer to the helper, using speech, tones, sounds and braille. Keys and braille input from the helper are carried out here. A silent relay voice keeps say all paced naturally. You don't hear the speech unless you turn that on. |
+| **Get help** (be controlled) | The bundled NVDA reads this computer to the helper, using speech, tones, sounds and braille. Keys and braille input from the helper are carried out here, using NVDA's laptop keyboard layout with Caps Lock or either Insert key as the NVDA key. A silent relay voice keeps say all paced naturally. You don't hear the speech unless you turn that on. |
 | **Give help** (control) | Remote speech is spoken here by NVDA with a real voice and shown in a live transcript. The remote braille line appears on your braille display and as Unicode braille on screen. Send your keyboard to the remote computer with Ctrl+T (or NVDA+Alt+Tab) and bring it back with Ctrl+Alt+Shift+F11 (or NVDA+Alt+Tab). Mute is included. |
 | **Saved computers** | Save any number of "computers": a name, server or host, port and key, plus the action Enter performs and an optional auto-connect. Keys are encrypted with Windows DPAPI. |
 | **Servers** | Use relay servers such as `nvdaremote.com`, connect directly to a computer that is hosting, or **host a direct connection** on this computer. Hosting uses a built-in relay with a self-signed certificate and includes an external IP and port check. |
