@@ -1,4 +1,4 @@
-"""Generate AssistBridge's icon (a white bridge on a blue rounded tile) without third-party libraries."""
+"""Generate AccessRem's icon (a white bridge on a blue rounded tile) without third-party libraries."""
 
 import math
 import struct

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds AssistBridge into dist\AssistBridge: the app, the NVDA backend add-on and a bundled portable NVDA.
+    Builds AccessRem into dist\AccessRem: the app, the NVDA backend add-on and a bundled portable NVDA.
 
 .PARAMETER NvdaVersion
     NVDA release to download and bundle (default 2026.2). Ignored when -NvdaSource is given.
@@ -13,7 +13,7 @@
     Build only the app and add-on (keeps any NVDA already in dist).
 
 .PARAMETER Zip
-    Also produce dist\AssistBridge-<version>.zip.
+    Also produce dist\AccessRem-<version>.zip.
 #>
 [CmdletBinding()]
 param(
@@ -26,12 +26,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
-$dist = Join-Path $root "dist\AssistBridge"
+$dist = Join-Path $root "dist\AccessRem"
 $work = Join-Path $root "build\out"
 New-Item -ItemType Directory -Force -Path $dist, $work | Out-Null
 
-Write-Host "Publishing the AssistBridge app..."
-dotnet publish (Join-Path $root "src\AssistBridge\AssistBridge.csproj") -c $Configuration -r win-x64 --self-contained true `
+Write-Host "Publishing the AccessRem app..."
+dotnet publish (Join-Path $root "src\AccessRem\AccessRem.csproj") -c $Configuration -r win-x64 --self-contained true `
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o $dist --nologo
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 
@@ -84,8 +84,8 @@ Copy-Item (Join-Path $root "LICENSE.txt") $dist -Force -ErrorAction SilentlyCont
 Copy-Item (Join-Path $root "THIRD-PARTY-NOTICES.txt") $dist -Force -ErrorAction SilentlyContinue
 
 if ($Zip) {
-    $appVersion = (Get-Item (Join-Path $dist "AssistBridge.exe")).VersionInfo.ProductVersion
-    $zipPath = Join-Path $root "dist\AssistBridge-$appVersion.zip"
+    $appVersion = (Get-Item (Join-Path $dist "AccessRem.exe")).VersionInfo.ProductVersion
+    $zipPath = Join-Path $root "dist\AccessRem-$appVersion.zip"
     if (Test-Path $zipPath) { Remove-Item $zipPath }
     Compress-Archive -Path $dist -DestinationPath $zipPath
     Write-Host "Created $zipPath"

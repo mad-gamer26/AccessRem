@@ -1,20 +1,20 @@
 <#
 .SYNOPSIS
-    Developer check: launches AssistBridge with a throwaway data folder, lists the UI Automation tree of the
+    Developer check: launches AccessRem with a throwaway data folder, lists the UI Automation tree of the
     main window (to catch unnamed controls), saves a screenshot, then closes the app.
 #>
 param(
-    [string]$Exe = (Join-Path $PSScriptRoot "..\dist\AssistBridge\AssistBridge.exe"),
-    [string]$Screenshot = (Join-Path $env:TEMP "assistbridge-main.png"),
+    [string]$Exe = (Join-Path $PSScriptRoot "..\dist\AccessRem\AccessRem.exe"),
+    [string]$Screenshot = (Join-Path $env:TEMP "accessrem-main.png"),
     [string]$SeedSettings
 )
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 
-$data = Join-Path $env:TEMP ("AssistBridgeUi-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+$data = Join-Path $env:TEMP ("AccessRemUi-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
 New-Item -ItemType Directory -Path $data | Out-Null
 if ($SeedSettings) { Copy-Item $SeedSettings (Join-Path $data "settings.json") }
-$env:ASSISTBRIDGE_DATA_DIR = $data
+$env:ACCESSREM_DATA_DIR = $data
 $p = Start-Process -FilePath $Exe -PassThru
 try {
     $root = [System.Windows.Automation.AutomationElement]::RootElement

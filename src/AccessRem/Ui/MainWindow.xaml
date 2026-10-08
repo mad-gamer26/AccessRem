@@ -1,0 +1,252 @@
+<Window x:Class="AccessRem.Ui.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:AccessRem.Ui"
+        Title="AccessRem"
+        Icon="/Assets/AppIcon.ico"
+        Style="{DynamicResource AppWindow}"
+        Width="1100" Height="760" MinWidth="720" MinHeight="540"
+        WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <ui:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
+    </Window.Resources>
+
+    <DockPanel>
+        <!-- Menu: every command in the app is reachable from here, with its shortcut shown. -->
+        <Menu DockPanel.Dock="Top" Padding="4,2" AutomationProperties.Name="Main menu">
+            <MenuItem Header="_Session">
+                <MenuItem Header="_Get help (let this computer be controlled)" InputGestureText="Ctrl+1" Command="{Binding GetHelpCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="Gi_ve help (control another computer)" InputGestureText="Ctrl+2" Command="{Binding GiveHelpCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="Connect with a _link or one-time details…" InputGestureText="Ctrl+O" Command="{Binding QuickConnectCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <Separator />
+                <MenuItem Header="_Control the remote computer" InputGestureText="Ctrl+T" Command="{Binding ToggleControlCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="_Mute remote speech and sounds" InputGestureText="Ctrl+M" IsCheckable="False" Command="{Binding ToggleMuteCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="Send clip_board" InputGestureText="Ctrl+Shift+C" Command="{Binding PushClipboardCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="Copy _link" InputGestureText="Ctrl+L" Command="{Binding CopyLinkCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="Copy _invitation text" InputGestureText="Ctrl+Shift+L" Command="{Binding CopyInvitationCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="S_end Control+Alt+Delete" Command="{Binding SendSasCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <Separator />
+                <MenuItem Header="_Disconnect" InputGestureText="Ctrl+D" Command="{Binding DisconnectCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <Separator />
+                <MenuItem Header="E_xit" Command="{Binding ExitCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+            </MenuItem>
+            <MenuItem Header="_Computers">
+                <MenuItem Header="_Add…" InputGestureText="Ctrl+N" Command="{Binding AddMachineCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="_Edit…" InputGestureText="F2" Command="{Binding EditMachineCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="_Duplicate" Command="{Binding DuplicateMachineCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="_Remove" InputGestureText="Delete" Command="{Binding RemoveMachineCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <Separator />
+                <MenuItem Header="Move _up" InputGestureText="Alt+Up" Command="{Binding MoveUpCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="Move do_wn" InputGestureText="Alt+Down" Command="{Binding MoveDownCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+            </MenuItem>
+            <MenuItem Header="_Tools">
+                <MenuItem Header="_Settings…" InputGestureText="Ctrl+," Command="{Binding SettingsCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="_Voice and speech settings (NVDA)…" Command="{Binding NvdaSpeechSettingsCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="_Braille display settings (NVDA)…" Command="{Binding NvdaBrailleSettingsCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <Separator />
+                <MenuItem Header="Clear _transcript" Command="{Binding ClearTranscriptCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="Copy transcript to clip_board" Command="{Binding CopyTranscriptCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="Open _logs folder" Command="{Binding OpenLogsCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+            </MenuItem>
+            <MenuItem Header="_Help">
+                <MenuItem Header="_How AccessRem works" InputGestureText="F1" Command="{Binding HelpCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="_Keyboard shortcuts" Command="{Binding ShortcutsCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <MenuItem Header="_About AccessRem" Command="{Binding AboutCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+            </MenuItem>
+        </Menu>
+
+        <StatusBar DockPanel.Dock="Bottom" AutomationProperties.Name="Status" Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="8,2">
+            <StatusBarItem>
+                <TextBlock x:Name="StatusBarText" Text="{Binding Status}" />
+            </StatusBarItem>
+            <StatusBarItem HorizontalAlignment="Right">
+                <TextBlock Text="{Binding PeerSummary}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </StatusBarItem>
+        </StatusBar>
+
+        <!-- Shown while the keyboard is controlling the remote computer: it must be impossible to miss. -->
+        <Border DockPanel.Dock="Top" Background="{DynamicResource BannerBackgroundBrush}" Padding="16,10"
+                Visibility="{Binding SendingKeys, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Return to this computer" Margin="12,0,0,0"
+                        Command="{Binding ToggleControlCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                <TextBlock x:Name="ControlBannerText" Foreground="{DynamicResource BannerTextBrush}" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
+            </DockPanel>
+        </Border>
+
+        <!-- Screen reader announcements (live region); visually hidden but present in the UI Automation tree. -->
+        <TextBlock x:Name="LiveRegion" DockPanel.Dock="Top" Height="0" Focusable="False"
+                   AutomationProperties.LiveSetting="Assertive" AutomationProperties.Name="" />
+
+        <Grid Margin="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="340" MinWidth="260" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Saved computers -->
+            <Border Style="{DynamicResource Card}" Grid.Column="0">
+                <DockPanel>
+                    <Label DockPanel.Dock="Top" Target="{Binding ElementName=MachineList}" Padding="0" Margin="0,0,0,8"
+                           Content="Sa_ved computers" FontSize="{DynamicResource HeadingFontSize}" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock DockPanel.Dock="Top" Style="{DynamicResource SecondaryText}" Margin="0,0,0,12"
+                               Text="A computer is a server address, port and key. Press Enter to connect using its usual action." />
+                    <WrapPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                        <Button Content="_Add…" Margin="0,0,8,8" Command="{Binding AddMachineCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                        <Button Content="_Edit…" Margin="0,0,8,8" Command="{Binding EditMachineCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                        <Button Content="_Remove" Margin="0,0,8,8" Command="{Binding RemoveMachineCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                    </WrapPanel>
+                    <Grid>
+                        <ListBox x:Name="MachineList" BorderThickness="0" Background="Transparent"
+                                 AutomationProperties.Name="Saved computers"
+                                 ItemContainerStyle="{DynamicResource ListItemStyle}"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 MouseDoubleClick="MachineList_MouseDoubleClick" KeyDown="MachineList_KeyDown">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel AutomationProperties.Name="{Binding AccessibleName}">
+                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding DefaultActionText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock x:Name="EmptyMachinesText" Style="{DynamicResource SecondaryText}" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                   TextAlignment="Center" Margin="12" IsHitTestVisible="False"
+                                   Text="No computers saved yet.&#x0a;Choose Add to save a server and key." />
+                    </Grid>
+                </DockPanel>
+            </Border>
+
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="16" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Start a session (when idle) -->
+                <Border Style="{DynamicResource Card}" Visibility="{Binding IsIdle, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <TextBlock Style="{DynamicResource TitleText}" Text="Remote assistance" />
+                        <TextBlock x:Name="SelectedMachineText" Style="{DynamicResource SecondaryText}" Margin="0,0,0,16" />
+                        <UniformGrid Columns="2">
+                            <Button x:Name="GetHelpButton" Style="{DynamicResource ActionTileButton}" Margin="0,0,8,0"
+                                    Command="{Binding GetHelpCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    AutomationProperties.Name="Get help"
+                                    AutomationProperties.HelpText="Let a helper control this computer. Their screen reader will read this computer to them."
+                                    AutomationProperties.AcceleratorKey="Ctrl+1">
+                                <StackPanel>
+                                    <TextBlock Text="Get help" FontSize="{DynamicResource HeadingFontSize}" FontWeight="SemiBold" />
+                                    <TextBlock Text="Let a helper control this computer (Ctrl+1)" TextWrapping="Wrap" Opacity="0.95" />
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="GiveHelpButton" Style="{DynamicResource SecondaryTileButton}" Margin="8,0,0,0"
+                                    Command="{Binding GiveHelpCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    AutomationProperties.Name="Give help"
+                                    AutomationProperties.HelpText="Control another computer and hear what its screen reader says."
+                                    AutomationProperties.AcceleratorKey="Ctrl+2">
+                                <StackPanel>
+                                    <TextBlock Text="Give help" FontSize="{DynamicResource HeadingFontSize}" FontWeight="SemiBold" />
+                                    <TextBlock Text="Control another computer (Ctrl+2)" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Button>
+                        </UniformGrid>
+                        <Button Content="Connect with a lin_k or one-time details…" HorizontalAlignment="Left" Margin="0,12,0,0"
+                                Command="{Binding QuickConnectCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Active session -->
+                <Border Style="{DynamicResource Card}" Visibility="{Binding IsActive, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <DockPanel>
+                            <Border DockPanel.Dock="Right" Style="{DynamicResource Pill}" VerticalAlignment="Top">
+                                <TextBlock x:Name="RolePill" FontWeight="SemiBold" />
+                            </Border>
+                            <TextBlock x:Name="SessionTitle" Style="{DynamicResource TitleText}" />
+                        </DockPanel>
+                        <TextBlock Text="{Binding Status}" FontSize="{DynamicResource HeadingFontSize}" Margin="0,0,0,2" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding StatusDetail}" Style="{DynamicResource SecondaryText}" />
+                        <TextBlock Text="{Binding PeerSummary}" Style="{DynamicResource SecondaryText}" Margin="0,2,0,0" />
+                        <TextBlock x:Name="HostedInfoText" Style="{DynamicResource SecondaryText}" Margin="0,6,0,0" Visibility="Collapsed" />
+
+                        <WrapPanel Margin="0,14,0,0">
+                            <Button x:Name="ToggleControlButton" Style="{DynamicResource PrimaryButton}" Margin="0,0,8,8"
+                                    Command="{Binding ToggleControlCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    Visibility="{Binding IsLeader, Converter={StaticResource BoolToVisibility}}" />
+                            <ToggleButton x:Name="MuteButton" Content="_Mute remote" Margin="0,0,8,8"
+                                          IsChecked="{Binding Muted, Mode=OneWay}"
+                                          Command="{Binding ToggleMuteCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                          Visibility="{Binding IsLeader, Converter={StaticResource BoolToVisibility}}" />
+                            <Button Content="Send clip_board" Margin="0,0,8,8" Command="{Binding PushClipboardCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                            <Button Content="Copy _link" Margin="0,0,8,8" Command="{Binding CopyLinkCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                            <Button Content="Copy _invitation" Margin="0,0,8,8" Command="{Binding CopyInvitationCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                            <Button Content="Ctrl+Alt+Del" Margin="0,0,8,8" AutomationProperties.Name="Send Control+Alt+Delete"
+                                    Command="{Binding SendSasCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    Visibility="{Binding IsLeader, Converter={StaticResource BoolToVisibility}}" />
+                            <Button Content="_Disconnect" Style="{DynamicResource DangerButton}" Margin="0,0,8,8"
+                                    Command="{Binding DisconnectCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- What is being said, braille, and activity -->
+                <Border Grid.Row="2" Style="{DynamicResource Card}" Padding="12">
+                    <TabControl x:Name="OutputTabs" BorderThickness="0" Background="Transparent" AutomationProperties.Name="Session output">
+                        <TabItem AutomationProperties.Name="Speech">
+                            <TabItem.Header>
+                                <AccessText Text="S_peech" />
+                            </TabItem.Header>
+                            <DockPanel Margin="0,8,0,0">
+                                <TextBlock DockPanel.Dock="Top" x:Name="TranscriptHint" Style="{DynamicResource SecondaryText}" Margin="0,0,0,8" />
+                                <ListBox x:Name="TranscriptList" ItemsSource="{Binding Transcript}" AutomationProperties.Name="Speech transcript"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <DockPanel AutomationProperties.Name="{Binding Text}" Margin="0,2">
+                                                <TextBlock DockPanel.Dock="Left" Text="{Binding TimeText}" Foreground="{DynamicResource TextSecondaryBrush}" Width="86" />
+                                                <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                                            </DockPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </DockPanel>
+                        </TabItem>
+                        <TabItem AutomationProperties.Name="Braille">
+                            <TabItem.Header>
+                                <TextBlock Text="Braille" />
+                            </TabItem.Header>
+                            <StackPanel Margin="0,8,0,0">
+                                <TextBlock Style="{DynamicResource SecondaryText}" Margin="0,0,0,8"
+                                           Text="The braille display line from the computer being controlled, when a braille display is in use." />
+                                <TextBox x:Name="BrailleBox" IsReadOnly="True" Text="{Binding BrailleText, Mode=OneWay}" FontSize="26"
+                                         FontFamily="Segoe UI Symbol" TextWrapping="Wrap" MinHeight="56" AutomationProperties.Name="Braille line" />
+                            </StackPanel>
+                        </TabItem>
+                        <TabItem AutomationProperties.Name="Activity">
+                            <TabItem.Header>
+                                <AccessText Text="Activit_y" />
+                            </TabItem.Header>
+                            <ListBox x:Name="EventList" Margin="0,8,0,0" ItemsSource="{Binding Events}" AutomationProperties.Name="Activity log"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel AutomationProperties.Name="{Binding Text}" Margin="0,2">
+                                            <TextBlock DockPanel.Dock="Left" Text="{Binding TimeText}" Foreground="{DynamicResource TextSecondaryBrush}" Width="86" />
+                                            <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </TabItem>
+                    </TabControl>
+                </Border>
+            </Grid>
+        </Grid>
+    </DockPanel>
+</Window>

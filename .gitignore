@@ -5,3 +5,5 @@ dist/
 *.user
 build/out/
 .claude/
+__pycache__/
+*.pyc

@@ -1,0 +1,50 @@
+<UserControl x:Class="AccessRem.Ui.ConnectionFields"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel>
+        <GroupBox Header="Server">
+            <StackPanel>
+                <RadioButton x:Name="RelayRadio" GroupName="ServerKind" IsChecked="True" Checked="Kind_Changed">
+                    <AccessText TextWrapping="Wrap" Text="Use a _relay server, or connect to a computer that is hosting" />
+                </RadioButton>
+                <RadioButton x:Name="HostRadio" GroupName="ServerKind" Checked="Kind_Changed">
+                    <AccessText TextWrapping="Wrap" Text="Host the connection on _this computer (direct connection)" />
+                </RadioButton>
+            </StackPanel>
+        </GroupBox>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="110" />
+            </Grid.ColumnDefinitions>
+            <StackPanel x:Name="HostPanel" Grid.Column="0">
+                <Label Style="{DynamicResource FieldLabel}" Content="_Host:" Target="{Binding ElementName=HostBox}" />
+                <ComboBox x:Name="HostBox" IsEditable="True" IsTextSearchEnabled="False"
+                          AutomationProperties.HelpText="Relay server name or address, such as nvdaremote.com. You can include a port, such as example.com:6837." />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+                <Label Style="{DynamicResource FieldLabel}" Content="_Port:" Target="{Binding ElementName=PortBox}" />
+                <TextBox x:Name="PortBox" Text="6837" MaxLength="5" InputScope="Number" />
+            </StackPanel>
+        </Grid>
+
+        <Label Style="{DynamicResource FieldLabel}" Content="_Key:" Target="{Binding ElementName=KeyBox}" Margin="0,10,0,0" />
+        <DockPanel>
+            <Button x:Name="GenerateKeyButton" DockPanel.Dock="Right" Content="_Generate key" Margin="8,0,0,0" Click="GenerateKey_Click" />
+            <TextBox x:Name="KeyBox" AutomationProperties.HelpText="Both computers must use the same key." />
+        </DockPanel>
+
+        <StackPanel x:Name="HostedPanel" Visibility="Collapsed" Margin="0,12,0,0">
+            <TextBlock Style="{DynamicResource SecondaryText}" Margin="0,0,0,8"
+                       Text="When hosting, the other person connects to this computer's internet address using the port and key above. The port must be forwarded on your router if they are on a different network." />
+            <Button x:Name="CheckPortButton" Content="Get e_xternal address and check port" HorizontalAlignment="Left" Click="CheckPort_Click" />
+            <TextBox x:Name="PortCheckResult" IsReadOnly="True" BorderThickness="0" Background="Transparent" TextWrapping="Wrap" Margin="0,6,0,0"
+                     Visibility="Collapsed" AutomationProperties.Name="Port check result" AutomationProperties.LiveSetting="Polite" />
+        </StackPanel>
+
+        <TextBlock x:Name="ProgressText" Style="{DynamicResource SecondaryText}" Margin="0,8,0,0" Visibility="Collapsed"
+                   AutomationProperties.LiveSetting="Polite" />
+    </StackPanel>
+</UserControl>
