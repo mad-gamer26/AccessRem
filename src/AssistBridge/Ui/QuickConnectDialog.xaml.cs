@@ -9,6 +9,7 @@ public partial class QuickConnectDialog : Window
     public QuickConnectDialog(SettingsStore store, ConnectionMode? mode, ConnectionInfo? prefill)
     {
         InitializeComponent();
+        AccessibleNames.Attach(this);
         Fields.Initialize(store, prefill?.Host ?? Protocol.DefaultRelayHost, prefill?.Port ?? Protocol.DefaultPort, prefill?.Key ?? "", ServerKind.Relay);
         var m = prefill?.Mode ?? mode ?? ConnectionMode.Follower;
         FollowerRadio.IsChecked = m == ConnectionMode.Follower;

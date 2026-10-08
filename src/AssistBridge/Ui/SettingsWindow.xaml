@@ -10,7 +10,7 @@
             <Button Content="OK" IsDefault="True" Style="{DynamicResource PrimaryButton}" Margin="0,0,8,0" Click="Ok_Click" />
             <Button Content="Cancel" IsCancel="True" />
         </StackPanel>
-        <TabControl x:Name="Tabs">
+        <TabControl x:Name="Tabs" AutomationProperties.Name="Settings categories">
             <!-- General -->
             <TabItem Header="General">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
@@ -92,7 +92,7 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
                     <StackPanel Margin="12">
                         <TextBlock Style="{DynamicResource SecondaryText}" Margin="0,0,0,10"
-                                   Text="These keys work during a session, even while the keyboard is controlling the remote computer. Use NVDA gesture names separated by commas, for example kb:control+alt+shift+f11 or kb:NVDA+alt+tab. NVDA is the Insert key." />
+                                   Text="These keys work during a session, even while the keyboard is controlling the remote computer. Use NVDA gesture names separated by commas, for example kb:control+alt+shift+f11 or kb:NVDA+alt+tab. NVDA is the Insert key or Caps Lock." />
                         <Label Style="{DynamicResource FieldLabel}" Content="Switch the keyboard between this and the remote computer:" Target="{Binding ElementName=ToggleGestures}" />
                         <TextBox x:Name="ToggleGestures" Margin="0,0,0,10" />
                         <Label Style="{DynamicResource FieldLabel}" Content="Send the clipboard:" Target="{Binding ElementName=ClipboardGestures}" />

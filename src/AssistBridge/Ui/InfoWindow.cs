@@ -34,6 +34,7 @@ public sealed class InfoWindow : Window
         panel.Children.Add(close);
         panel.Children.Add(box);
         Content = panel;
+        AccessibleNames.Attach(this);
         Loaded += (_, _) => box.Focus();
     }
 
@@ -62,7 +63,7 @@ public sealed class InfoWindow : Window
         var g = gesture.StartsWith("kb:", StringComparison.OrdinalIgnoreCase) ? gesture[3..] : gesture;
         return string.Join("+", g.Split('+').Select(part => part.ToLowerInvariant() switch
         {
-            "nvda" => "NVDA (Insert)",
+            "nvda" => "NVDA (Insert or Caps Lock)",
             "control" or "ctrl" => "Ctrl",
             "alt" => "Alt",
             "shift" => "Shift",

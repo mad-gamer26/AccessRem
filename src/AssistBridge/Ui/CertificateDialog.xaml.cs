@@ -9,6 +9,7 @@ public partial class CertificateDialog : Window
     public CertificateDialog(CertificateUntrustedException error)
     {
         InitializeComponent();
+        AccessibleNames.Attach(this);
         DetailsBox.Text =
             $"The certificate presented by {error.Address} could not be verified. This connection may be compromised: " +
             "it is possible that someone is trying to overhear your communication.\n\n" +

@@ -24,6 +24,7 @@ public partial class SettingsWindow : Window
     public SettingsWindow(SettingsStore store, SessionController session)
     {
         InitializeComponent();
+        AccessibleNames.Attach(this);
         _store = store;
         _session = session;
         var s = store.Current;

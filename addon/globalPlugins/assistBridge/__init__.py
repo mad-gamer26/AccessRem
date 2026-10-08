@@ -1011,6 +1011,9 @@ def _prepareBundledConfig() -> None:
 		# NVDA's own Remote Access must stay off; this plugin runs the sessions instead.
 		("remote", "enabled"): False,
 		("audio", "audioDuckingMode"): 0,
+		# NVDA key: Caps Lock, numpad Insert and extended Insert (1 + 2 + 4), so helpers can use
+		# whichever NVDA key they are used to, including laptop-layout users who rely on Caps Lock.
+		("keyboard", "NVDAModifierKeys"): 7,
 	}
 	for (section, key), value in values.items():
 		try:

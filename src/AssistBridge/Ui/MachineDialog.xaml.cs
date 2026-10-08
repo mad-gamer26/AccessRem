@@ -11,6 +11,7 @@ public partial class MachineDialog : Window
     public MachineDialog(Machine machine, bool isNew, SettingsStore store)
     {
         InitializeComponent();
+        AccessibleNames.Attach(this);
         _machine = machine;
         _store = store;
         Title = isNew ? "Add computer" : $"Edit {machine.DisplayName}";

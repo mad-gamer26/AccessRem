@@ -22,6 +22,7 @@ public partial class MainWindow : Window, ISessionUi
     public MainWindow()
     {
         InitializeComponent();
+        AccessibleNames.Attach(this);
         GetHelpCommand = new RelayCommand(() => QuickStartAsync(ConnectionMode.Follower), () => _session?.IsIdle == true);
         GiveHelpCommand = new RelayCommand(() => QuickStartAsync(ConnectionMode.Leader), () => _session?.IsIdle == true);
         QuickConnectCommand = new RelayCommand(() => ShowQuickConnectAsync(null, null), () => _session?.IsIdle == true);

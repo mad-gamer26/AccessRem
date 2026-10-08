@@ -78,6 +78,14 @@ public partial class App : Application
         Directory.CreateDirectory(directory);
         await Task.Delay(1500);
         SaveSnapshot(Main, Path.Combine(directory, "main.png"));
+        var report = new List<string>();
+        void Audit(string name, Window w)
+        {
+            var problems = AccessibleNames.Audit(w).ToList();
+            report.Add(problems.Count == 0 ? $"{name}: every control has its own name" : $"{name}:");
+            report.AddRange(problems.Select(p => "  " + p));
+        }
+        Audit("main", Main);
         var windows = new (string Name, Func<Window> Create)[]
         {
             ("machine", () => new MachineDialog(new Machine(), true, Settings)),
@@ -92,11 +100,35 @@ public partial class App : Application
             window.Show();
             await Task.Delay(700);
             SaveSnapshot(window, Path.Combine(directory, name + ".png"));
+            Audit(name, window);
+            // Tab pages only exist while selected, so visit each one.
+            foreach (var tabs in FindAll<System.Windows.Controls.TabControl>(window))
+            {
+                for (var i = 0; i < tabs.Items.Count; i++)
+                {
+                    tabs.SelectedIndex = i;
+                    await Task.Delay(300);
+                    Audit($"{name} tab {AccessibleNames.TextOf((tabs.Items[i] as System.Windows.Controls.TabItem)?.Header)}", window);
+                }
+            }
             window.Close();
         }
+        File.WriteAllLines(Path.Combine(directory, "accessibility.txt"), report);
         _instance.Dispose();
         _tray?.Dispose();
         Shutdown();
+    }
+
+    private static IEnumerable<T> FindAll<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+                yield return match;
+            foreach (var nested in FindAll<T>(child))
+                yield return nested;
+        }
     }
 
     private static void SaveSnapshot(Window window, string path)

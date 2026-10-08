@@ -112,6 +112,10 @@ public class BackendEndToEndTests
             await TestUtil.WaitUntilAsync(() => !leader.Session.IsConnected, TimeSpan.FromSeconds(10), "the helper to be disconnected");
             Assert.Empty(ui.Errors);
             Assert.False(ctx.Get(() => session.IsActive));
+
+            // NVDA saved its configuration on exit: Caps Lock and both Insert keys act as the NVDA key.
+            var nvdaIni = File.ReadAllText(Path.Combine(dataDir, "nvdaConfig", "nvda.ini"));
+            Assert.Matches(@"NVDAModifierKeys\s*=\s*7", nvdaIni);
         }
         catch
         {
