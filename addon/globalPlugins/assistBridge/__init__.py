@@ -436,6 +436,22 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		core.triggerNVDAExit = guardedTriggerExit
 		core.restart = guardedRestart
 
+		# NVDA+Q reaches NVDA's Exit command first; refuse it there so NVDA does not log a spurious error.
+		try:
+			import gui
+
+			self._originalOnExitCommand = gui.mainFrame.onExitCommand
+
+			def guardedOnExitCommand(evt=None):
+				if self._allowExit:
+					return self._originalOnExitCommand(evt)
+				self._onExitBlocked()
+
+			gui.mainFrame.onExitCommand = guardedOnExitCommand
+		except Exception:
+			self._originalOnExitCommand = None
+			log.debugWarning("Unable to guard NVDA's Exit command", exc_info=True)
+
 	def _removeExitGuard(self) -> None:
 		if self._originalTriggerExit is not None:
 			core.triggerNVDAExit = self._originalTriggerExit
@@ -443,6 +459,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if self._originalRestart is not None:
 			core.restart = self._originalRestart
 			self._originalRestart = None
+		if getattr(self, "_originalOnExitCommand", None) is not None:
+			import gui
+
+			try:
+				del gui.mainFrame.onExitCommand  # Remove the instance override; the class method remains.
+			except AttributeError:
+				pass
+			self._originalOnExitCommand = None
 
 	def _onExitBlocked(self) -> None:
 		self.announce("This copy of NVDA belongs to AssistBridge. To end the session, use Disconnect in AssistBridge.")
@@ -509,7 +533,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self.link.sendControl("announce", text=text)
 		if not speakLocally:
 			return
-		if self._role is ConnectionMode.FOLLOWER and not self.cfg["speakLocallyWhenControlled"]:
+		if self._role is ConnectionMode.FOLLOWER:
+			# Spoken like any other NVDA message on this computer: the helper hears it,
+			# and the person here only hears it if they chose to (otherwise the voice is silent).
+			speech.speakMessage(text)
 			return
 		self._allowLocalSpeechDepth += 1
 		try:

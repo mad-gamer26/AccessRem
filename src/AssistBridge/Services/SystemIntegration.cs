@@ -120,8 +120,13 @@ public sealed class SingleInstance : IDisposable
         }
     }
 
+    private int _disposed;
+
     public void Dispose()
     {
+        // Called both when the app exits and by Program.Main's using block.
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+            return;
         _stop.Cancel();
         try
         {

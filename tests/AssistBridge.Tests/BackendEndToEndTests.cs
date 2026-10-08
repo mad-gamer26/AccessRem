@@ -175,9 +175,13 @@ public class BackendEndToEndTests
             await ctx.RunAsync(() => session.TryExitBackendAsync());
             await TestUtil.WaitUntilAsync(() => { lock (announcements) return announcements.Any(a => a.Contains("belongs to AssistBridge")); },
                 TimeSpan.FromSeconds(10), "the exit refusal");
+            // The helper (who most likely pressed NVDA+Q) hears why nothing happened.
+            await leader.WaitForAsync(m => Protocol.TypeOf(m) == Protocol.MsgSpeak && m.ToJsonString().Contains("belongs to Assist"),
+                TimeSpan.FromSeconds(10), "the refusal to reach the helper"); // NVDA speaks "AssistBridge" as "Assist Bridge".
             await Task.Delay(1500);
             Assert.False(System.Diagnostics.Process.GetProcessById(pid).HasExited);
             Assert.True(showRequested);
+            Assert.DoesNotContain("logic error", ReadShared(nvdaLogPath));
 
             // 3. If NVDA crashes, it is restarted while the network connection stays up.
             System.Diagnostics.Process.GetProcessById(pid).Kill();
