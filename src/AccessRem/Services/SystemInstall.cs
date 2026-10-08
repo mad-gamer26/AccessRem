@@ -76,6 +76,7 @@ public static class SystemInstall
                 // When updating, the helper service runs from the installed AccessRem.exe and holds it open.
                 // It is installed again below.
                 SasHelper.Stop();
+                CancelPendingDeletes(target);
                 CopyDirectory(source, target, skip: new[] { Path.Combine("nvda", "systemConfig") });
             }
             var nvdaDir = Path.Combine(target, "nvda");
@@ -140,6 +141,7 @@ public static class SystemInstall
                 File.Delete(shortcut);
             if (Directory.Exists(dir))
             {
+                RemoveInUseTolerant(dir);
                 // This program may be running from the folder, so remove it once we have exited.
                 Process.Start(new ProcessStartInfo("cmd.exe", $"/c timeout /t 3 /nobreak >nul & rmdir /s /q \"{dir}\"")
                 {
@@ -214,6 +216,70 @@ public static class SystemInstall
     private static string StartMenuShortcutPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "AccessRem.lnk");
 
+    /// <summary>
+    /// The installed AccessRem.exe that this copy hands over to as it starts: the copy installed for all users
+    /// does everything any other copy does, and also works on secure screens, so a second copy (for example one
+    /// installed just for this user) only runs while it is newer than the installed one. Set
+    /// ACCESSREM_NO_HANDOFF=1 to run another copy anyway, for example a development build.
+    /// </summary>
+    public static string? HandOffTarget()
+    {
+        try
+        {
+            if (Environment.GetEnvironmentVariable("ACCESSREM_NO_HANDOFF") is { Length: > 0 } || !IsInstalled || IsRunningInstalledCopy)
+                return null;
+            var installed = Path.Combine(InstalledDirectory!, "AccessRem.exe");
+            var theirs = Version.Parse(FileVersionInfo.GetVersionInfo(installed).FileVersion ?? "");
+            var ours = Version.Parse(FileVersionInfo.GetVersionInfo(Environment.ProcessPath!).FileVersion ?? "");
+            return theirs >= ours ? installed : null;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write($"Unable to compare with the installed copy: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// After installing for all users from another copy: that copy's own Start menu shortcut would duplicate
+    /// the installed one, so remove it, and point its desktop shortcut at the installed copy.
+    /// </summary>
+    public static void RetireUserShortcuts(string fromExe, string toExe)
+    {
+        try
+        {
+            var shellType = Type.GetTypeFromProgID("WScript.Shell")!;
+            dynamic shell = Activator.CreateInstance(shellType)!;
+            var startMenu = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "AccessRem.lnk");
+            var desktop = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "AccessRem.lnk");
+            foreach (var path in new[] { startMenu, desktop })
+            {
+                if (!File.Exists(path))
+                    continue;
+                dynamic link = shell.CreateShortcut(path);
+                if (string.Equals((string)link.TargetPath, fromExe, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (path == startMenu)
+                    {
+                        File.Delete(path);
+                    }
+                    else
+                    {
+                        link.TargetPath = toExe;
+                        link.WorkingDirectory = Path.GetDirectoryName(toExe);
+                        link.Save();
+                    }
+                }
+                Marshal.FinalReleaseComObject(link);
+            }
+            Marshal.FinalReleaseComObject(shell);
+        }
+        catch (Exception ex)
+        {
+            Log($"Unable to update this user's shortcuts: {ex.Message}");
+        }
+    }
+
     private static void CreateStartMenuShortcut(string exe)
     {
         try
@@ -238,7 +304,7 @@ public static class SystemInstall
     {
         Directory.CreateDirectory(destination);
         foreach (var file in Directory.EnumerateFiles(source))
-            File.Copy(file, Path.Combine(destination, Path.GetFileName(file)), overwrite: true);
+            CopyFile(file, Path.Combine(destination, Path.GetFileName(file)));
         foreach (var dir in Directory.EnumerateDirectories(source))
         {
             var rel = Path.Combine(relative, Path.GetFileName(dir));
@@ -247,6 +313,114 @@ public static class SystemInstall
             CopyDirectory(dir, Path.Combine(destination, Path.GetFileName(dir)), skip, rel);
         }
     }
+
+    // NVDA loads its IAccessible2 proxy DLLs (nvda\lib\<version>) into every program it reads, and they stay
+    // loaded until those programs exit, Explorer included. Such a file cannot be replaced or deleted, but it can
+    // be renamed, so it is moved aside and deleted when Windows restarts, as NVDA's own installer does.
+
+    private static void CopyFile(string source, string destination)
+    {
+        try
+        {
+            File.Copy(source, destination, overwrite: true);
+        }
+        catch (IOException) when (File.Exists(destination))
+        {
+            var existing = new FileInfo(destination);
+            var replacement = new FileInfo(source);
+            // The same file (zip extraction and copying keep the time): nothing to replace.
+            if (existing.Length == replacement.Length && existing.LastWriteTimeUtc == replacement.LastWriteTimeUtc)
+                return;
+            MoveAside(destination);
+            File.Copy(source, destination);
+        }
+    }
+
+    private static void MoveAside(string path)
+    {
+        var aside = $"{path}.{Guid.NewGuid():N}.delete";
+        File.Move(path, aside);
+        if (!MoveFileEx(aside, null, MoveFileDelayUntilReboot))
+            Log($"Unable to schedule {aside} for deletion: error {Marshal.GetLastWin32Error()}");
+        Log($"{path} is in use; replaced it, and the old copy is deleted when Windows restarts.");
+    }
+
+    /// <summary>
+    /// Deletes what it can in <paramref name="dir"/>. Files in use are deleted when Windows restarts, and so are
+    /// folders that are not empty yet. The running program is left for the caller.
+    /// </summary>
+    private static void RemoveInUseTolerant(string dir)
+    {
+        var self = Environment.ProcessPath;
+        foreach (var file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+        {
+            if (string.Equals(file, self, StringComparison.OrdinalIgnoreCase))
+                continue;
+            try
+            {
+                File.Delete(file);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                MoveFileEx(file, null, MoveFileDelayUntilReboot);
+                Log($"{file} is in use; it is deleted when Windows restarts.");
+            }
+        }
+        // Deepest first, so that each folder is empty (or scheduled after its contents) when its turn comes.
+        foreach (var sub in Directory.EnumerateDirectories(dir, "*", SearchOption.AllDirectories).OrderByDescending(d => d.Length))
+        {
+            try
+            {
+                Directory.Delete(sub);
+            }
+            catch (IOException)
+            {
+                MoveFileEx(sub, null, MoveFileDelayUntilReboot);
+            }
+        }
+        if (Directory.EnumerateFileSystemEntries(dir).Any(e => !string.Equals(e, self, StringComparison.OrdinalIgnoreCase)))
+            MoveFileEx(dir, null, MoveFileDelayUntilReboot);
+    }
+
+    /// <summary>
+    /// An uninstall since Windows last restarted may have scheduled files in <paramref name="dir"/> for deletion
+    /// at restart. Those deletions go by path, so they would remove the files being installed again: cancel them,
+    /// except for old copies moved aside (*.delete).
+    /// </summary>
+    private static void CancelPendingDeletes(string dir)
+    {
+        const string Value = "PendingFileRenameOperations";
+        using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager", writable: true);
+        if (key?.GetValue(Value) is not string[] operations)
+            return;
+        // Pairs of (path, new path); an empty new path means delete. Paths look like \??\C:\Program Files\...,
+        // and Windows 11 puts flags in front ("*1\??\C:\...").
+        var folder = @"\??\" + Path.GetFullPath(dir).TrimEnd('\\');
+        var kept = new List<string>();
+        for (var i = 0; i + 1 < operations.Length; i += 2)
+        {
+            var at = operations[i].IndexOf(@"\??\", StringComparison.Ordinal);
+            var path = at >= 0 ? operations[i][at..] : operations[i];
+            var inFolder = path.Equals(folder, StringComparison.OrdinalIgnoreCase) ||
+                           path.StartsWith(folder + @"\", StringComparison.OrdinalIgnoreCase);
+            if (inFolder && operations[i + 1].Length == 0 && !path.EndsWith(".delete", StringComparison.OrdinalIgnoreCase))
+                continue;
+            kept.Add(operations[i]);
+            kept.Add(operations[i + 1]);
+        }
+        if (kept.Count == operations.Length)
+            return;
+        if (kept.Count == 0)
+            key.DeleteValue(Value);
+        else
+            key.SetValue(Value, kept.ToArray(), RegistryValueKind.MultiString);
+        Log($"Cancelled {(operations.Length - kept.Count) / 2} deletions at restart that an earlier uninstall scheduled.");
+    }
+
+    private const int MoveFileDelayUntilReboot = 0x4;
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool MoveFileEx(string existingFileName, string? newFileName, int flags);
 
     private static void Log(string message) => AppLog.Write("[install] " + message);
 }

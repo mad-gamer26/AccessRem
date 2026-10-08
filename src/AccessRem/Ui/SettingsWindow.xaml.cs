@@ -119,6 +119,8 @@ public partial class SettingsWindow : Window
         }
         UpdateSecureScreenStatus();
         UpdateSasStatus();
+        if (!SystemInstall.IsRunningInstalledCopy && SystemInstall.InstalledDirectory is { } installedDir)
+            SystemInstall.RetireUserShortcuts(Environment.ProcessPath!, Path.Combine(installedDir, "AccessRem.exe"));
         if (!SystemInstall.IsRunningInstalledCopy && SystemInstall.InstalledDirectory is { } dir &&
             System.Windows.MessageBox.Show(this, $"AccessRem is installed in {dir} and has a Start menu shortcut. Switch to the installed copy now?",
                 "Install for all users", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes) == MessageBoxResult.Yes)

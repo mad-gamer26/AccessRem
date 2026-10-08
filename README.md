@@ -33,7 +33,12 @@ In PowerShell on Windows 10 or 11:
 irm https://accessrem.mad-gamer.com | iex
 ```
 
-This installs the latest release from GitHub for the current user, without administrator rights. It checks the download against the size and SHA-256 in the release's `latest.json`. Run the same command again to update, reinstall or uninstall. It also offers to update a copy installed for all users. The output is plain lines for screen readers. You can read the script first at <https://accessrem.mad-gamer.com/install.ps1>.
+This installs the latest release from GitHub in one of two ways:
+
+- **For everyone on this computer** (installed mode, below). Windows asks for permission first.
+- **Just for you**, without administrator rights. Your helper can't use User Account Control or sign-in screens.
+
+It checks the download against the size and SHA-256 in the release's `latest.json`. Run the same command again to update, reinstall or uninstall, or to switch a copy just for you to one for everyone. The output is plain lines for screen readers. You can read the script first at <https://accessrem.mad-gamer.com/install.ps1>.
 
 To publish a release, run `.\build.ps1 -Zip` and attach `dist\AccessRem-<version>-windows-x64.zip` and `dist\latest.json` to a GitHub release. The installer always uses the latest release, so the site needs no change. `deploy\Deploy-Site.ps1` deploys the installer and its nginx site (`deploy\accessrem.mad-gamer.com.conf`) to mad-gamer.com.
 
@@ -97,7 +102,7 @@ The network connection belongs to AccessRem, so the bundled NVDA can be replaced
 
 ## Installed mode: User Account Control and sign-in screens
 
-**Settings › Getting help › Install for all users** (administrator) sets up the following:
+Choose **For everyone on this computer** in the installer, or **Settings › Getting help › Install for all users** (administrator). Either one sets up the following:
 
 1. Copies AccessRem to `C:\Program Files\AccessRem`.
 2. Makes `nvda\nvda.exe` a copy of NVDA's signed UI Access build. NVDA's own installer does the same.
@@ -105,6 +110,13 @@ The network connection belongs to AccessRem, so the bundled NVDA can be replaced
 4. Writes a `systemConfig` for secure screens: NVDA Remote Access on, and silent unless "Speak on this computer too" is chosen.
 5. Installs the AccessRem Helper service. It handles Ctrl+Alt+Del, and applies the speak-locally choice to secure screens.
 6. Adds a Start menu shortcut and an entry in Windows' installed apps list (for uninstalling).
+
+The installed copy does everything any other copy does, so it replaces them:
+
+- Any other copy hands over to the installed one as it starts, unless it's a newer version. Set `ACCESSREM_NO_HANDOFF=1` to run another copy anyway, for example a development build.
+- Installing from another copy removes that copy's own Start menu shortcut and points its desktop shortcut at the installed copy.
+
+NVDA loads its IAccessible2 proxy DLLs into every program it reads, and they stay loaded until those programs exit. Updates and uninstalls handle this the way NVDA's own installer does: a file in use is moved aside and deleted when Windows restarts.
 
 During a session as the controlled computer, the installed copy works like this:
 

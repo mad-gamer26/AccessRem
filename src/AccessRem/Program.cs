@@ -27,6 +27,15 @@ public static class Program
             }
         }
 
+        if (SystemInstall.HandOffTarget() is { } installed)
+        {
+            var start = new System.Diagnostics.ProcessStartInfo(installed) { WorkingDirectory = Path.GetDirectoryName(installed)! };
+            foreach (var arg in args)
+                start.ArgumentList.Add(arg);
+            System.Diagnostics.Process.Start(start);
+            return 0;
+        }
+
         using var instance = SingleInstance.TryAcquire();
         if (instance is null)
         {

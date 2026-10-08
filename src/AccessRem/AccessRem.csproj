@@ -13,7 +13,7 @@
     <AssemblyTitle>AccessRem</AssemblyTitle>
     <Product>AccessRem</Product>
     <Description>Remote assistance client compatible with NVDA Remote Access</Description>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <Copyright>Copyright © 2026 AccessRem contributors. GPL-2.0-or-later.</Copyright>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
